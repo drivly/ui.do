@@ -5,9 +5,15 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     credentials: 'include',
+    redirect: 'manual',
+    headers: {
+      ...init?.headers,
+      'Accept': 'application/json',
+    },
   })
 
-  if (res.status === 401) {
+  // 302 redirect = auth redirect, 401 = explicit auth failure
+  if (res.status === 401 || res.type === 'opaqueredirect' || res.status === 0) {
     window.location.href = `${AUTH_URL}?callbackUrl=${encodeURIComponent(window.location.href)}`
     throw new Error('Redirecting to login')
   }
