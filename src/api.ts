@@ -24,7 +24,7 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
 export async function fetchLayers(domain?: string): Promise<Record<string, any>> {
   const params = new URLSearchParams()
   params.set('where[outputFormat][equals]', 'ilayer')
-  if (domain) params.set('where[domain][equals]', domain)
+  if (domain) params.set('where[domain.domainSlug][equals]', domain)
   params.set('depth', '0')
   params.set('limit', '1')
   params.set('sort', '-createdAt')
