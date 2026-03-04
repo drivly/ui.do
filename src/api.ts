@@ -1,5 +1,19 @@
 const API_URL = new URLSearchParams(window.location.search).get('api') || 'https://api.auto.dev'
-const API_KEY = new URLSearchParams(window.location.search).get('key') || ''
+const AUTH_URL = 'https://auto.dev/signin'
+
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    credentials: 'include',
+  })
+
+  if (res.status === 401) {
+    window.location.href = `${AUTH_URL}?callbackUrl=${encodeURIComponent(window.location.href)}`
+    throw new Error('Redirecting to login')
+  }
+
+  return res
+}
 
 export async function fetchLayers(domain?: string): Promise<Record<string, any>> {
   const params = new URLSearchParams()
@@ -9,16 +23,13 @@ export async function fetchLayers(domain?: string): Promise<Record<string, any>>
   params.set('limit', '1')
   params.set('sort', '-createdAt')
 
-  const res = await fetch(`${API_URL}/graphdl/raw/generators?${params}`, {
-    headers: { 'X-API-Key': API_KEY },
-  })
+  const res = await apiFetch(`/graphdl/raw/generators?${params}`)
 
   if (!res.ok) throw new Error(`Failed to fetch layers: ${res.status}`)
   const data = await res.json()
   const gen = data.docs?.[0]
   if (!gen?.output?.files) throw new Error('No ilayer generator found')
 
-  // Parse all layer files
   const layers: Record<string, any> = {}
   for (const [key, value] of Object.entries(gen.output.files)) {
     if (key.startsWith('layers/') && key.endsWith('.json')) {
@@ -30,12 +41,9 @@ export async function fetchLayers(domain?: string): Promise<Record<string, any>>
 }
 
 export async function sendStateEvent(machineType: string, instanceId: string, event: string) {
-  const res = await fetch(`${API_URL}/state/${machineType}/${instanceId}/${event}`, {
+  const res = await apiFetch(`/state/${machineType}/${instanceId}/${event}`, {
     method: 'POST',
-    headers: {
-      'X-API-Key': API_KEY,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({}),
   })
   return res.json()
