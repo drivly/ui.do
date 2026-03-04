@@ -14,7 +14,7 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
 
   // 302 redirect = auth redirect, 401 = explicit auth failure
   if (res.status === 401 || res.type === 'opaqueredirect' || res.status === 0) {
-    window.location.href = `${AUTH_URL}?callbackUrl=${encodeURIComponent(window.location.href)}`
+    window.location.href = `${AUTH_URL}?redirectUrl=${encodeURIComponent(window.location.href)}`
     throw new Error('Redirecting to login')
   }
 
