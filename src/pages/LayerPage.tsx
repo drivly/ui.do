@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { fetchLayers, sendStateEvent } from '../api'
 import { FormLayer } from '../components/FormLayer'
 import { NavigationLayer } from '../components/NavigationLayer'
@@ -12,7 +12,9 @@ export function LayerPage({ layerName: defaultName }: { layerName?: string }) {
   const [error, setError] = useState<string | null>(null)
   const [actionResult, setActionResult] = useState<any>(null)
 
-  const domain = new URLSearchParams(window.location.search).get('domain') || undefined
+  const [searchParams] = useSearchParams()
+  const domain = searchParams.get('domain') || undefined
+  const qs = domain ? `?domain=${domain}` : ''
 
   useEffect(() => {
     fetchLayers(domain).then(setLayers).catch(e => setError(e.message))
@@ -25,7 +27,7 @@ export function LayerPage({ layerName: defaultName }: { layerName?: string }) {
   if (!layer) return (
     <div className="max-w-2xl mx-auto">
       <p className="text-gray-500">Layer "{name}" not found.</p>
-      <Link to="/" className="text-blue-600 hover:underline mt-2 inline-block">Back to index</Link>
+      <Link to={`/${qs}`} className="text-blue-600 hover:underline mt-2 inline-block">Back to index</Link>
     </div>
   )
 
@@ -45,12 +47,12 @@ export function LayerPage({ layerName: defaultName }: { layerName?: string }) {
     <div>
       {name !== 'index' && (
         <div className="max-w-2xl mx-auto mb-4">
-          <Link to="/" className="text-blue-600 hover:underline text-sm">Back to index</Link>
+          <Link to={`/${qs}`} className="text-blue-600 hover:underline text-sm">Back to index</Link>
         </div>
       )}
       {layer.type === 'formLayer'
         ? <FormLayer layer={layer as any} onAction={handleAction} />
-        : <NavigationLayer layer={layer as any} />}
+        : <NavigationLayer layer={layer as any} domain={domain} onAction={handleAction} />}
       {actionResult && (
         <div className="max-w-2xl mx-auto mt-4 p-4 bg-green-50 rounded-lg border border-green-200">
           <pre className="text-sm text-green-800">{JSON.stringify(actionResult, null, 2)}</pre>

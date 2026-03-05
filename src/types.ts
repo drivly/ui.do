@@ -51,6 +51,7 @@ export interface INavigationLayer {
   type: 'layer'
   layout?: string
   items: IListItem[]
+  actionButtons?: IActionButton[]
 }
 
 export type ILayer = IFormLayer | INavigationLayer
