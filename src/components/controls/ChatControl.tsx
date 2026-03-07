@@ -9,16 +9,16 @@ interface ChatMessage {
 }
 
 const ROLE_STYLES: Record<string, string> = {
-  user: 'bg-blue-600 text-white rounded-br-md',
-  agent: 'bg-white text-gray-900 rounded-bl-md shadow-sm border border-gray-200',
-  admin: 'bg-blue-900 text-white rounded-bl-md',
+  user: 'bg-primary-600 text-white rounded-br-md',
+  agent: 'bg-card text-card-foreground rounded-bl-md shadow-sm border border-border',
+  admin: 'bg-primary-900 text-white rounded-bl-md',
 }
 
 export function ChatControl({ field }: { field: ILayerField }) {
   const messages = (field.value as ChatMessage[] | undefined) || []
 
   if (!messages.length) {
-    return <div className="py-8 text-center text-gray-400 text-sm">No messages yet</div>
+    return <div className="py-8 text-center text-muted-foreground text-sm">No messages yet</div>
   }
 
   return (
@@ -36,7 +36,7 @@ export function ChatControl({ field }: { field: ILayerField }) {
                   Escalation: {msg.escalationReason}
                 </div>
               )}
-              <div className={`text-[10px] text-gray-400 mt-1 ${isUser ? 'text-right' : 'text-left'}`}>
+              <div className={`text-[10px] text-muted-foreground mt-1 ${isUser ? 'text-right' : 'text-left'}`}>
                 {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>

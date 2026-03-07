@@ -6,8 +6,8 @@ export function MarkdownControl({ field }: { field: ILayerField }) {
   if (!text) return null
   return (
     <div className="mb-4">
-      {field.label && <label className="block text-sm font-medium text-gray-500 mb-1">{field.label}</label>}
-      <div className="text-sm text-gray-900"><Markdown>{text}</Markdown></div>
+      {field.label && <label className="block text-sm font-medium text-muted-foreground mb-1">{field.label}</label>}
+      <div className="text-sm text-foreground"><Markdown>{text}</Markdown></div>
     </div>
   )
 }

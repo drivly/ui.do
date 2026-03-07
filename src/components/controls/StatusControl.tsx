@@ -14,7 +14,7 @@ export function StatusControl({ field }: { field: ILayerField }) {
   const status = (field.value as string) || ''
   return (
     <div className="mb-4">
-      {field.label && <label className="block text-sm font-medium text-gray-500 mb-1">{field.label}</label>}
+      {field.label && <label className="block text-sm font-medium text-muted-foreground mb-1">{field.label}</label>}
       <span className={`inline-block text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border ${STATUS_COLORS[status] || STATUS_COLORS.Closed}`}>
         {status}
       </span>
