@@ -26,14 +26,22 @@ export interface Session {
   admin?: boolean
 }
 
-export async function fetchSession(): Promise<Session> {
-  const res = await apiFetch('/account')
-  if (!res.ok) throw new Error('Failed to fetch session')
-  const data = await res.json()
-  return {
-    email: data.user?.email || data.email || '',
-    plan: data.user?.plan || data.plan || '',
-    admin: data.user?.admin || data.admin || false,
+export async function fetchSession(): Promise<Session | null> {
+  try {
+    const res = await fetch(`${API_URL}/account`, {
+      credentials: 'include',
+      redirect: 'manual',
+      headers: { 'Accept': 'application/json' },
+    })
+    if (!res.ok || res.type === 'opaqueredirect' || res.status === 0) return null
+    const data = await res.json()
+    return {
+      email: data.user?.email || data.email || '',
+      plan: data.user?.plan || data.plan || '',
+      admin: data.user?.admin || data.admin || false,
+    }
+  } catch {
+    return null
   }
 }
 
