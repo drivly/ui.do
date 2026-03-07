@@ -17,7 +17,8 @@ export function EntityListView({ domain, entityName }: Props) {
   useEffect(() => {
     setLoading(true)
     setError(null)
-    fetchLayers(domain.slug)
+    const slug = domain.domainSlug || domain.slug
+    fetchLayers(slug)
       .then(l => {
         setLayers(l as Record<string, ILayer>)
         const listName = entityName.toLowerCase()
@@ -30,7 +31,7 @@ export function EntityListView({ domain, entityName }: Props) {
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
-  }, [domain.slug, entityName])
+  }, [domain.domainSlug, domain.slug, entityName])
 
   const handleNavigate = (address: string) => {
     const name = address.replace(/^\/layers\//, '/').replace(/^\//, '').replace(/\/$/, '') || 'index'

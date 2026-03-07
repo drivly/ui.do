@@ -50,16 +50,19 @@ export async function fetchSession(): Promise<Session | null> {
 
 export interface Domain {
   id: string
-  slug: string
+  slug?: string
+  domainSlug?: string
   title?: string
+  name?: string
   tenant?: string
 }
 
 export async function fetchDomains(): Promise<Domain[]> {
-  const res = await apiFetch('/graphdl/domains')
+  const res = await apiFetch('/graphdl/raw/domains?depth=0&pagination=false')
   if (!res.ok) throw new Error('Failed to fetch domains')
   const data = await res.json()
-  return data.docs || data || []
+  const docs = data.docs || data
+  return Array.isArray(docs) ? docs : []
 }
 
 export interface Noun {
