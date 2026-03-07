@@ -1,11 +1,11 @@
 export interface ILayerField {
   id: string
   label: string
-  type: 'text' | 'email' | 'numeric' | 'bool' | 'date' | 'select' | 'multiline' | 'slider' | 'label' | 'password'
+  type: 'text' | 'email' | 'numeric' | 'bool' | 'date' | 'select' | 'multiline' | 'slider' | 'label' | 'password' | 'chat' | 'markdown' | 'status'
   placeholder?: string
   required?: boolean
-  options?: string[]  // for select fields
-  value?: string | number | boolean
+  options?: string[]
+  value?: string | number | boolean | unknown
 }
 
 export interface IFieldset {
@@ -27,6 +27,8 @@ export interface INavigationItem {
   subtext?: string
   address?: string
   link?: { address: string }
+  status?: string
+  onClick?: () => void
 }
 
 export interface IListItem {
@@ -55,3 +57,6 @@ export interface INavigationLayer {
 }
 
 export type ILayer = IFormLayer | INavigationLayer
+
+export type ControlComponent = React.ComponentType<{ field: ILayerField }>
+export type ConverterRegistry = Record<string, ControlComponent>

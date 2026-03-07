@@ -1,6 +1,15 @@
 import type { ILayerField } from '../types'
 
 export function TextField({ field }: { field: ILayerField }) {
+  if (field.type === 'label') {
+    return (
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-500 mb-1">{field.label}</label>
+        <div className="text-sm text-gray-900">{field.value as string}</div>
+      </div>
+    )
+  }
+
   const inputType = field.type === 'email' ? 'email'
     : field.type === 'numeric' ? 'number'
     : field.type === 'password' ? 'password'

@@ -1,16 +1,7 @@
-import type { ILayerField } from '../types'
-import { TextField } from './TextField'
-import { BoolField } from './BoolField'
-import { SelectField } from './SelectField'
-import { DateField } from './DateField'
-import { MultiLineField } from './MultiLineField'
+import type { ILayerField, ConverterRegistry } from '../types'
+import { resolveControl } from './converter'
 
-export function Field({ field }: { field: ILayerField }) {
-  switch (field.type) {
-    case 'bool': return <BoolField field={field} />
-    case 'select': return <SelectField field={field} />
-    case 'date': return <DateField field={field} />
-    case 'multiline': return <MultiLineField field={field} />
-    default: return <TextField field={field} />
-  }
+export function Field({ field, registry }: { field: ILayerField; registry: ConverterRegistry }) {
+  const Control = resolveControl(field.type, registry)
+  return <Control field={field} />
 }

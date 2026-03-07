@@ -3,6 +3,7 @@ import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { fetchLayers, sendStateEvent } from '../api'
 import { FormLayer } from '../components/FormLayer'
 import { NavigationLayer } from '../components/NavigationLayer'
+import { defaultRegistry } from '../components/converter'
 import type { ILayer, IActionButton } from '../types'
 
 export function LayerPage({ layerName: defaultName }: { layerName?: string }) {
@@ -51,8 +52,8 @@ export function LayerPage({ layerName: defaultName }: { layerName?: string }) {
         </div>
       )}
       {layer.type === 'formLayer'
-        ? <FormLayer layer={layer as any} onAction={handleAction} />
-        : <NavigationLayer layer={layer as any} domain={domain} onAction={handleAction} />}
+        ? <FormLayer layer={layer as any} registry={defaultRegistry} onAction={handleAction} />
+        : <NavigationLayer layer={layer as any} registry={defaultRegistry} onAction={handleAction} />}
       {actionResult && (
         <div className="max-w-2xl mx-auto mt-4 p-4 bg-green-50 rounded-lg border border-green-200">
           <pre className="text-sm text-green-800">{JSON.stringify(actionResult, null, 2)}</pre>
