@@ -1,6 +1,10 @@
 const API_URL = new URLSearchParams(window.location.search).get('api') || 'https://api.auto.dev'
 const AUTH_URL = 'https://auto.dev/signin'
 
+export function redirectToLogin() {
+  window.location.href = `${AUTH_URL}?redirectUrl=${encodeURIComponent(window.location.href)}`
+}
+
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -13,8 +17,7 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   })
 
   if (res.status === 401 || res.type === 'opaqueredirect' || res.status === 0) {
-    window.location.href = `${AUTH_URL}?redirectUrl=${encodeURIComponent(window.location.href)}`
-    throw new Error('Redirecting to login')
+    throw new Error('Unauthorized')
   }
 
   return res
