@@ -3,6 +3,7 @@ import type { ILayer, IActionButton, ConverterRegistry } from '../types'
 import { FormLayer } from './FormLayer'
 import { NavigationLayer } from './NavigationLayer'
 import { mergeRegistry } from './converter'
+import { NavigationProvider } from './NavigationContext'
 
 interface Props {
   layer: ILayer
@@ -14,10 +15,15 @@ interface Props {
 export function LayerRenderer({ layer, converters, onAction, onNavigate }: Props) {
   const registry = useMemo(() => mergeRegistry(converters), [converters])
   const handleAction = onAction || (() => {})
+  const handleNavigate = onNavigate || (() => {})
 
-  if (layer.type === 'formLayer') {
-    return <FormLayer layer={layer} registry={registry} onAction={handleAction} onNavigate={onNavigate} />
-  }
-
-  return <NavigationLayer layer={layer} registry={registry} onAction={handleAction} onNavigate={onNavigate} />
+  return (
+    <NavigationProvider value={handleNavigate}>
+      {layer.type === 'formLayer' ? (
+        <FormLayer layer={layer} registry={registry} onAction={handleAction} onNavigate={handleNavigate} />
+      ) : (
+        <NavigationLayer layer={layer} registry={registry} onAction={handleAction} onNavigate={handleNavigate} />
+      )}
+    </NavigationProvider>
+  )
 }

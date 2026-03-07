@@ -1,7 +1,9 @@
 import type { ILayerField } from '../types'
+import { useNavigate } from './NavigationContext'
 
 /** A field that renders as a tappable navigation link to another layer */
 export function NavigationField({ field }: { field: ILayerField }) {
+  const navigate = useNavigate()
   const address = field.link?.address || ''
 
   return (
@@ -11,7 +13,7 @@ export function NavigationField({ field }: { field: ILayerField }) {
       )}
       <button
         type="button"
-        data-address={address}
+        onClick={() => address && navigate(address)}
         className="w-full flex items-center justify-between px-3 py-2 border border-border rounded-lg bg-card text-card-foreground hover:border-primary-300 dark:hover:border-primary-700 transition-colors text-sm"
       >
         <span>{(field.value as string) || field.placeholder || 'Select...'}</span>
