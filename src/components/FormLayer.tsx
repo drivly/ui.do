@@ -88,7 +88,7 @@ export function FormLayer({ layer, registry, onAction, onNavigate }: Props) {
                 className="block w-full text-left p-3 bg-card rounded-lg border border-border hover:border-primary-300 dark:hover:border-primary-700 transition-colors text-sm text-card-foreground">
                 <div className="flex items-center justify-between">
                   <span>{nav.text}</span>
-                  {nav.subtext && <span className="text-xs text-muted-foreground">{nav.subtext}</span>}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground flex-shrink-0"><path d="m9 18 6-6-6-6"/></svg>
                 </div>
               </button>
             ))}

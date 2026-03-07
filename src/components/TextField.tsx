@@ -5,10 +5,16 @@ export function TextField({ field }: { field: ILayerField }) {
   const hasBrokenRules = field.brokenRules && field.brokenRules.length > 0
 
   if (field.type === 'label') {
+    const val = field.value as string
+    const hasValue = val && !/^\{[a-zA-Z_]\w*\}$/.test(val.trim())
     return (
       <div className="mb-4">
         <label className="block text-sm font-medium text-muted-foreground mb-1">{field.label}</label>
-        <div className="text-sm text-foreground">{field.value as string}</div>
+        {hasValue ? (
+          <div className="text-sm text-foreground">{val}</div>
+        ) : (
+          <div className="text-sm text-muted-foreground/50">&mdash;</div>
+        )}
       </div>
     )
   }

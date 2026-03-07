@@ -4,6 +4,11 @@ import { ActionButton } from './ActionButton'
 import { Menu } from './Menu'
 import { Toolbar } from './Toolbar'
 
+/** Returns true if the string is a template variable like {fieldId} */
+function isTemplateText(s: string): boolean {
+  return /^\{[a-zA-Z_]\w*\}$/.test(s.trim())
+}
+
 interface Props {
   layer: INavigationLayer
   registry: ConverterRegistry
@@ -58,13 +63,15 @@ export function NavigationLayer({ layer, registry: _registry, onAction, onNaviga
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-card-foreground truncate">{item.text}</div>
-                    {item.subtext && <div className="text-xs text-muted-foreground mt-0.5">{item.subtext}</div>}
+                    {item.subtext && !isTemplateText(item.subtext) && <div className="text-xs text-muted-foreground mt-0.5">{item.subtext}</div>}
                   </div>
                 </div>
-                {item.status && (
+                {item.status ? (
                   <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-muted text-muted-foreground border-border">
                     {item.status}
                   </span>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground flex-shrink-0"><path d="m9 18 6-6-6-6"/></svg>
                 )}
               </div>
             </button>
