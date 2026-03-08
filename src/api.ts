@@ -121,6 +121,24 @@ export async function fetchConstraints(domainId: string): Promise<Constraint[]> 
   return data.docs || []
 }
 
+export interface GraphInstance {
+  id: string
+  title: string
+  type?: string | { id: string; title?: string }
+  domain?: string | { id: string }
+}
+
+export async function fetchGraphs(domainId: string): Promise<GraphInstance[]> {
+  const params = new URLSearchParams()
+  params.set('where[domain][equals]', domainId)
+  params.set('depth', '1')
+  params.set('pagination', 'false')
+  const res = await apiFetch(`/graphdl/raw/graphs?${params}`)
+  if (!res.ok) return [] // gracefully return empty if graphs endpoint unavailable
+  const data = await res.json()
+  return data.docs || []
+}
+
 export async function fetchLayers(domain?: string): Promise<Record<string, any>> {
   const params = new URLSearchParams()
   params.set('where[outputFormat][equals]', 'ilayer')

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchLayers, fetchReadings, type Domain, type Reading } from '../api'
+import { fetchLayers, fetchReadings, fetchGraphs, sendStateEvent, type Domain, type Reading, type GraphInstance } from '../api'
 import { formatNounName } from '../utils'
 import { LayerRenderer } from '../components/LayerRenderer'
 import type { ILayer, IActionButton } from '../types'
@@ -7,6 +7,19 @@ import type { ILayer, IActionButton } from '../types'
 interface Props {
   domain: Domain
   entityName: string
+}
+
+/**
+ * Parse a state machine address like /state/{machineType}/{instanceId}/{event}
+ * Returns null if the address doesn't match the pattern.
+ */
+function parseStateAddress(address: string): { machineType: string; instanceId: string; event: string } | null {
+  const path = address.replace(/^\//, '')
+  if (!path.startsWith('state/')) return null
+  const segments = path.split('/')
+  // state / machineType / instanceId / event
+  if (segments.length !== 4) return null
+  return { machineType: segments[1], instanceId: segments[2], event: segments[3] }
 }
 
 /**
@@ -58,25 +71,26 @@ function findLayerKey(keys: string[], entityName: string): string | undefined {
   return undefined
 }
 
-/** Check if a reading text contains a quoted instance (e.g., "ProviderResource 'Fly.io/load-src-do'") */
-function isInstanceFact(text: string): boolean {
-  return /'[^']*'/.test(text)
+/** Filter readings that mention an entity name (case-insensitive word boundary match) */
+function readingsForEntity(readings: Reading[], entityName: string): Reading[] {
+  const re = new RegExp(`\\b${entityName}\\b`, 'i')
+  return readings.filter(r => re.test(r.text))
 }
 
-/** Filter readings that mention an entity name (case-insensitive word boundary match) */
-function readingsForEntity(readings: Reading[], entityName: string): { schema: Reading[]; instances: Reading[] } {
+/** Filter graphs whose schema title mentions an entity name */
+function graphsForEntity(graphs: GraphInstance[], entityName: string): GraphInstance[] {
   const re = new RegExp(`\\b${entityName}\\b`, 'i')
-  const matching = readings.filter(r => re.test(r.text))
-  return {
-    schema: matching.filter(r => !isInstanceFact(r.text)),
-    instances: matching.filter(r => isInstanceFact(r.text)),
-  }
+  return graphs.filter(g => {
+    const schemaTitle = typeof g.type === 'object' ? g.type?.title || '' : ''
+    return re.test(schemaTitle) || re.test(g.title)
+  })
 }
 
 export function EntityListView({ domain, entityName }: Props) {
   const [layers, setLayers] = useState<Record<string, ILayer> | null>(null)
   const [navStack, setNavStack] = useState<string[]>([])
   const [readings, setReadings] = useState<Reading[]>([])
+  const [graphs, setGraphs] = useState<GraphInstance[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -84,24 +98,30 @@ export function EntityListView({ domain, entityName }: Props) {
   const listLayer = layers ? findLayerKey(Object.keys(layers), entityName) : undefined
   const isOnListLayer = currentLayer === listLayer
 
+  const refreshData = useCallback((resetNav = true) => {
+    const slug = domain.domainSlug || domain.slug
+    return Promise.all([
+      fetchLayers(slug).then(l => l as Record<string, ILayer>),
+      fetchReadings(domain.id),
+      fetchGraphs(domain.id),
+    ]).then(([l, r, g]) => {
+      setLayers(l)
+      setReadings(r)
+      setGraphs(g)
+      if (resetNav) {
+        const initial = findLayerKey(Object.keys(l), entityName)
+        setNavStack(initial ? [initial] : [])
+      }
+    })
+  }, [domain.domainSlug, domain.slug, domain.id, entityName])
+
   useEffect(() => {
     setLoading(true)
     setError(null)
-    const slug = domain.domainSlug || domain.slug
-
-    Promise.all([
-      fetchLayers(slug).then(l => l as Record<string, ILayer>),
-      fetchReadings(domain.id),
-    ])
-      .then(([l, r]) => {
-        setLayers(l)
-        setReadings(r)
-        const initial = findLayerKey(Object.keys(l), entityName)
-        setNavStack(initial ? [initial] : [])
-      })
+    refreshData(true)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
-  }, [domain.domainSlug, domain.slug, domain.id, entityName])
+  }, [refreshData])
 
   const handleNavigate = useCallback((address: string) => {
     if (!layers) return
@@ -117,7 +137,17 @@ export function EntityListView({ domain, entityName }: Props) {
 
   const handleAction = useCallback((btn: IActionButton) => {
     const address = btn.address || btn.link?.address
+
+    // Check for state machine address (e.g. /state/Subscription/123/upgrade)
     if (address) {
+      const stateInfo = parseStateAddress(address)
+      if (stateInfo) {
+        sendStateEvent(stateInfo.machineType, stateInfo.instanceId, stateInfo.event)
+          .then(() => refreshData(false))
+          .catch(e => setError(e.message))
+        return
+      }
+
       handleNavigate(address)
       return
     }
@@ -133,7 +163,7 @@ export function EntityListView({ domain, entityName }: Props) {
     }
 
     console.log('Action:', btn.action, btn)
-  }, [handleNavigate, layers, currentLayer])
+  }, [handleNavigate, refreshData, layers, currentLayer])
 
   const handleBack = useCallback(() => {
     setNavStack(prev => prev.length > 1 ? prev.slice(0, -1) : prev)
@@ -156,9 +186,10 @@ export function EntityListView({ domain, entityName }: Props) {
   const layer = layers[currentLayer]
   const canGoBack = navStack.length > 1
 
-  // On the list layer, replace the template list items with readings
+  // On the list layer, replace the template list items with readings + graphs
   if (isOnListLayer) {
-    const { schema, instances } = readingsForEntity(readings, entityName)
+    const schema = readingsForEntity(readings, entityName)
+    const instances = graphsForEntity(graphs, entityName)
     return (
       <div className="max-w-2xl mx-auto">
         {canGoBack && (
@@ -185,14 +216,14 @@ export function EntityListView({ domain, entityName }: Props) {
           </div>
         )}
 
-        {/* Instance facts */}
+        {/* Instance facts (from graphs collection) */}
         {instances.length > 0 && (
           <div className="mb-6">
             <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Instance Facts</h2>
             <div className="space-y-2">
-              {instances.map(r => (
-                <div key={r.id} className="bg-card border border-border rounded-lg p-3 text-sm text-card-foreground">
-                  {r.text}
+              {instances.map(g => (
+                <div key={g.id} className="bg-card border border-border rounded-lg p-3 text-sm text-card-foreground">
+                  {g.title}
                 </div>
               ))}
             </div>
