@@ -1,5 +1,9 @@
-import type { Domain, Noun } from '../api'
+import { useState, useEffect, useCallback } from 'react'
+import type { Domain, Noun, Resource } from '../api'
+import { fetchLayers, fetchDashboardNoun, fetchDashboardPrefs, writeDashboardPref, deleteDashboardPref } from '../api'
 import { nounDisplayName, formatDomainLabel } from '../utils'
+import { LayerRenderer } from '../components/LayerRenderer'
+import type { ILayer, INavigationLayer } from '../types'
 
 type View = { type: 'dashboard' } | { type: 'entity'; noun: string } | { type: 'schema' } | { type: 'uod' } | { type: 'build' }
 
@@ -10,7 +14,175 @@ interface Props {
   onNavigate: (view: View) => void
 }
 
+/** Parse a dashboard preference value like "pins Customer" or "hides Order" */
+function parsePref(value: string): { action: string; target: string } | null {
+  const match = value.match(/^(pins|hides|reorders)\s+(.+?)(?:\s+to\s+(\d+))?$/)
+  if (!match) return null
+  return { action: match[1], target: match[2] }
+}
+
+/** Apply user preferences to the index navigation layer */
+function applyPrefs(layer: INavigationLayer, prefs: Resource[]): INavigationLayer {
+  if (!prefs.length) return layer
+
+  const hidden = new Set<string>()
+  const pinned = new Set<string>()
+  const reorders = new Map<string, number>()
+
+  for (const pref of prefs) {
+    const parsed = parsePref(pref.value || '')
+    if (!parsed) continue
+    if (parsed.action === 'hides') hidden.add(parsed.target)
+    if (parsed.action === 'pins') pinned.add(parsed.target)
+    if (parsed.action === 'reorders') {
+      const m = (pref.value || '').match(/to\s+(\d+)$/)
+      if (m) reorders.set(parsed.target, parseInt(m[1]))
+    }
+  }
+
+  const patchedItems = layer.items.map(list => ({
+    ...list,
+    items: list.items
+      .filter(item => !hidden.has(item.text))
+      .sort((a, b) => {
+        const aPin = pinned.has(a.text) ? 0 : 1
+        const bPin = pinned.has(b.text) ? 0 : 1
+        if (aPin !== bPin) return aPin - bPin
+        const aOrder = reorders.get(a.text) ?? Infinity
+        const bOrder = reorders.get(b.text) ?? Infinity
+        return aOrder - bOrder
+      }),
+  }))
+
+  return { ...layer, items: patchedItems }
+}
+
 export function DashboardView({ domain, nouns, isAdmin, onNavigate }: Props) {
+  const [indexLayer, setIndexLayer] = useState<ILayer | null>(null)
+  const [layerError, setLayerError] = useState(false)
+  const [dashboardNoun, setDashboardNoun] = useState<Noun | null>(null)
+  const [prefs, setPrefs] = useState<Resource[]>([])
+  const [editing, setEditing] = useState(false)
+
+  const domainSlug = domain.domainSlug || domain.slug || domain.name || ''
+
+  useEffect(() => {
+    if (!domainSlug) return
+    setIndexLayer(null)
+    setLayerError(false)
+    fetchLayers(domainSlug)
+      .then(layers => {
+        if (layers.index) setIndexLayer(layers.index as ILayer)
+        else setLayerError(true)
+      })
+      .catch(() => setLayerError(true))
+  }, [domainSlug])
+
+  // Check for Dashboard noun and fetch user preferences
+  useEffect(() => {
+    if (!domain.id) return
+    fetchDashboardNoun(domain.id).then(noun => {
+      setDashboardNoun(noun)
+      if (noun) {
+        fetchDashboardPrefs(domain.id, noun.id).then(setPrefs)
+      }
+    })
+  }, [domain.id])
+
+  const togglePref = useCallback(async (action: 'pins' | 'hides', nounName: string) => {
+    if (!dashboardNoun) return
+    const value = `${action} ${nounName}`
+    const existing = prefs.find(p => p.value === value)
+    if (existing) {
+      await deleteDashboardPref(existing.id)
+      setPrefs(prev => prev.filter(p => p.id !== existing.id))
+    } else {
+      const created = await writeDashboardPref(domain.id, dashboardNoun.id, value)
+      setPrefs(prev => [...prev, created])
+    }
+  }, [dashboardNoun, prefs, domain.id])
+
+  const isPinned = (name: string) => prefs.some(p => p.value === `pins ${name}`)
+  const isHidden = (name: string) => prefs.some(p => p.value === `hides ${name}`)
+
+  // Map layer navigation addresses back to entity views
+  const handleLayerNavigate = (address: string) => {
+    const slug = address.replace(/^\//, '')
+    const noun = nouns.find(n =>
+      n.plural === slug ||
+      n.name.toLowerCase() === slug ||
+      n.name === slug
+    )
+    if (noun) onNavigate({ type: 'entity', noun: noun.name })
+  }
+
+  // Render generated index layer with user preferences applied
+  if (indexLayer && !layerError && indexLayer.type === 'layer') {
+    const displayLayer = applyPrefs(indexLayer as INavigationLayer, prefs)
+    const canEdit = dashboardNoun && (isAdmin || prefs.length >= 0) // Edit available when Dashboard noun exists
+
+    return (
+      <div className="max-w-3xl mx-auto">
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-foreground font-display">{formatDomainLabel(domain)}</h1>
+            <p className="text-sm text-muted-foreground">{nouns.length} {nouns.length === 1 ? 'entity' : 'entities'}</p>
+          </div>
+          {canEdit && (
+            <button
+              onClick={() => setEditing(!editing)}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                editing
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+              }`}>
+              {editing ? 'Done' : 'Edit Dashboard'}
+            </button>
+          )}
+        </div>
+
+        {editing ? (
+          // Edit mode: show all entities with pin/hide controls
+          <div className="space-y-2">
+            {nouns.map(n => (
+              <div key={n.id}
+                className={`bg-card border rounded-lg p-4 flex items-center justify-between transition-all ${
+                  isHidden(n.name) ? 'border-border opacity-50' : 'border-border'
+                }`}>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => togglePref('pins', n.name)}
+                    className={`text-sm ${isPinned(n.name) ? 'text-amber-500' : 'text-muted-foreground hover:text-amber-500'}`}
+                    title={isPinned(n.name) ? 'Unpin' : 'Pin to top'}>
+                    {isPinned(n.name) ? '\u2605' : '\u2606'}
+                  </button>
+                  <span className="text-sm font-medium text-card-foreground">{nounDisplayName(n)}</span>
+                </div>
+                <button
+                  onClick={() => togglePref('hides', n.name)}
+                  className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                  title={isHidden(n.name) ? 'Show' : 'Hide'}>
+                  {isHidden(n.name) ? 'Show' : 'Hide'}
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <>
+            <LayerRenderer layer={displayLayer} onNavigate={handleLayerNavigate} />
+            <button
+              onClick={() => onNavigate({ type: 'schema' })}
+              className="mt-3 w-full bg-card border border-dashed border-border rounded-lg p-4 text-left hover:border-primary-300 dark:hover:border-primary-700 transition-all">
+              <div className="text-sm font-medium text-muted-foreground">Schema</div>
+              <div className="text-xs text-muted-foreground mt-0.5">View readings and constraints</div>
+            </button>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  // Fallback: noun grid (when no generated layers exist)
   return (
     <div className="max-w-3xl mx-auto">
       <div className="mb-6">
@@ -35,14 +207,6 @@ export function DashboardView({ domain, nouns, isAdmin, onNavigate }: Props) {
           <div className="text-xs text-muted-foreground mt-1">View schema</div>
         </button>
       </div>
-
-      {isAdmin && (
-        <div className="mt-8 p-4 bg-primary-50 dark:bg-primary-950 border border-primary-200 dark:border-primary-800 rounded-lg">
-          <p className="text-sm text-primary-700 dark:text-primary-300">
-            Dashboard layout customization coming soon. Admins will be able to configure widgets and set default layouts for users.
-          </p>
-        </div>
-      )}
     </div>
   )
 }

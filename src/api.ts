@@ -176,6 +176,58 @@ export async function bootstrapApp(slug: string, readings: { text: string; multi
   return res.json()
 }
 
+export interface Resource {
+  id: string
+  title?: string
+  type?: string | { id: string; name?: string }
+  value?: string
+  domain?: string | { id: string }
+}
+
+/** Fetch the Dashboard noun for a domain, if one exists */
+export async function fetchDashboardNoun(domainId: string): Promise<Noun | null> {
+  const params = new URLSearchParams()
+  params.set('where[domain][equals]', domainId)
+  params.set('where[name][equals]', 'Dashboard')
+  params.set('depth', '0')
+  params.set('limit', '1')
+  const res = await apiFetch(`/graphdl/raw/nouns?${params}`)
+  if (!res.ok) return null
+  const data = await res.json()
+  return data.docs?.[0] || null
+}
+
+/** Fetch dashboard preference resources for the current user */
+export async function fetchDashboardPrefs(domainId: string, dashboardNounId: string): Promise<Resource[]> {
+  const params = new URLSearchParams()
+  params.set('where[domain][equals]', domainId)
+  params.set('where[type][equals]', dashboardNounId)
+  params.set('depth', '0')
+  params.set('pagination', 'false')
+  const res = await apiFetch(`/graphdl/raw/resources?${params}`)
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.docs || []
+}
+
+/** Write a dashboard preference as a resource instance fact */
+export async function writeDashboardPref(domainId: string, dashboardNounId: string, value: string): Promise<Resource> {
+  const res = await apiFetch('/graphdl/raw/resources', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: dashboardNounId, value, domain: domainId }),
+  })
+  if (!res.ok) throw new Error(`Failed to write dashboard pref: ${res.status}`)
+  const data = await res.json()
+  return data.doc
+}
+
+/** Delete a dashboard preference resource */
+export async function deleteDashboardPref(id: string): Promise<void> {
+  const res = await apiFetch(`/graphdl/raw/resources/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Failed to delete dashboard pref: ${res.status}`)
+}
+
 export async function sendStateEvent(machineType: string, instanceId: string, event: string) {
   const res = await apiFetch(`/state/${machineType}/${instanceId}/${event}`, {
     method: 'POST',
