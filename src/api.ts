@@ -228,6 +228,19 @@ export async function deleteDashboardPref(id: string): Promise<void> {
   if (!res.ok) throw new Error(`Failed to delete dashboard pref: ${res.status}`)
 }
 
+export async function extractClaims(text: string): Promise<any> {
+  const res = await apiFetch('/graphdl/extract/claims', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+  if (!res.ok) {
+    const err = await res.text().catch(() => '')
+    throw new Error(err || `Extraction failed: ${res.status}`)
+  }
+  return res.json()
+}
+
 export async function sendStateEvent(machineType: string, instanceId: string, event: string) {
   const res = await apiFetch(`/state/${machineType}/${instanceId}/${event}`, {
     method: 'POST',
