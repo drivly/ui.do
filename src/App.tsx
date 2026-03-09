@@ -10,6 +10,7 @@ import { UoDView } from './pages/UoDView'
 import { BuildView } from './pages/BuildView'
 import { OverboardView } from './pages/OverboardView'
 import { nounDisplayName, formatDomainLabel } from './utils'
+import { PaneLayout, usePaneNavigation } from './layout'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null }
@@ -62,6 +63,8 @@ function AppContent() {
   const { session, isAdmin, loading: sessionLoading } = useSession()
   const { apps, loading: appsLoading, error: appsError, refresh: refreshApps } = useApps()
   const { dark, toggle: toggleTheme } = useTheme()
+
+  const { layout, navigate: paneNavigate, goBack, closePopover } = usePaneNavigation()
 
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
   const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null)
@@ -329,74 +332,82 @@ function AppContent() {
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        {selectedDomain && view.type !== 'build' && view.type !== 'uod' && (
-          <nav className="w-48 bg-card border-r border-border p-3 space-y-0.5 overflow-y-auto flex-shrink-0">
-            <button
-              onClick={() => setView({ type: 'dashboard' })}
-              className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
-                view.type === 'dashboard' ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400 font-medium' : 'text-foreground hover:bg-muted'
-              }`}>
-              Dashboard
-            </button>
-            <button
-              onClick={() => setView({ type: 'schema' })}
-              className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
-                view.type === 'schema' ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400 font-medium' : 'text-foreground hover:bg-muted'
-              }`}>
-              Schema
-            </button>
-            <div className="border-t border-border my-2" />
-            {nouns.map(n => (
-              <button key={n.id}
-                onClick={() => setView({ type: 'entity', noun: n.name })}
-                className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
-                  view.type === 'entity' && (view as any).noun === n.name
-                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400 font-medium'
-                    : 'text-foreground hover:bg-muted'
-                }`}>
-                {nounDisplayName(n)}
-              </button>
-            ))}
-          </nav>
+      <PaneLayout
+        layout={{
+          ...layout,
+          detail: { ...layout.detail, current: selectedDomain ? view.type : null },
+        }}
+        renderMaster={() => (
+          <>
+            {selectedDomain && view.type !== 'build' && view.type !== 'uod' && (
+              <nav className="p-3 space-y-0.5 overflow-y-auto flex-1">
+                <button
+                  onClick={() => setView({ type: 'dashboard' })}
+                  className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
+                    view.type === 'dashboard' ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400 font-medium' : 'text-foreground hover:bg-muted'
+                  }`}>
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => setView({ type: 'schema' })}
+                  className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
+                    view.type === 'schema' ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400 font-medium' : 'text-foreground hover:bg-muted'
+                  }`}>
+                  Schema
+                </button>
+                <div className="border-t border-border my-2" />
+                {nouns.map(n => (
+                  <button key={n.id}
+                    onClick={() => setView({ type: 'entity', noun: n.name })}
+                    className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
+                      view.type === 'entity' && (view as any).noun === n.name
+                        ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400 font-medium'
+                        : 'text-foreground hover:bg-muted'
+                    }`}>
+                    {nounDisplayName(n)}
+                  </button>
+                ))}
+              </nav>
+            )}
+          </>
         )}
-
-        {/* Main Content */}
-        <main className="flex-1 overflow-y-auto p-6">
-          {!session && !appsLoading && apps.length === 0 && view.type !== 'build' && (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground mb-4">Sign in to view your apps</p>
-              <button onClick={redirectToLogin} className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors">
-                Sign In
-              </button>
-            </div>
-          )}
-          {view.type === 'build' && (
-            <BuildView onComplete={handleBuildComplete} onCancel={() => setView({ type: 'dashboard' })} />
-          )}
-          {view.type === 'uod' && selectedApp && (
-            <UoDView domains={appDomains} onSelectDomain={handleSelectDomain} />
-          )}
-          {view.type === 'dashboard' && !selectedDomainId && selectedApp && appDomains.length > 1 && (
-            <OverboardView
-              domains={appDomains}
-              appName={formatAppLabel(selectedApp)}
-              onSelectDomain={handleSelectDomain}
-              onNavigate={setView}
-            />
-          )}
-          {view.type === 'dashboard' && selectedDomain && (
-            <DashboardView domain={selectedDomain} nouns={nouns} isAdmin={isAdmin} onNavigate={setView} />
-          )}
-          {view.type === 'schema' && selectedDomain && (
-            <SchemaView domain={selectedDomain} />
-          )}
-          {view.type === 'entity' && selectedDomain && (
-            <EntityListView domain={selectedDomain} entityName={(view as any).noun} />
-          )}
-        </main>
-      </div>
+        renderDetail={() => (
+          <main className="flex-1 overflow-y-auto p-6">
+            {!session && !appsLoading && apps.length === 0 && view.type !== 'build' && (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground mb-4">Sign in to view your apps</p>
+                <button onClick={redirectToLogin} className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors">
+                  Sign In
+                </button>
+              </div>
+            )}
+            {view.type === 'build' && (
+              <BuildView onComplete={handleBuildComplete} onCancel={() => setView({ type: 'dashboard' })} />
+            )}
+            {view.type === 'uod' && selectedApp && (
+              <UoDView domains={appDomains} onSelectDomain={handleSelectDomain} />
+            )}
+            {view.type === 'dashboard' && !selectedDomainId && selectedApp && appDomains.length > 1 && (
+              <OverboardView
+                domains={appDomains}
+                appName={formatAppLabel(selectedApp)}
+                onSelectDomain={handleSelectDomain}
+                onNavigate={setView}
+              />
+            )}
+            {view.type === 'dashboard' && selectedDomain && (
+              <DashboardView domain={selectedDomain} nouns={nouns} isAdmin={isAdmin} onNavigate={setView} />
+            )}
+            {view.type === 'schema' && selectedDomain && (
+              <SchemaView domain={selectedDomain} />
+            )}
+            {view.type === 'entity' && selectedDomain && (
+              <EntityListView domain={selectedDomain} entityName={(view as any).noun} />
+            )}
+          </main>
+        )}
+        onClosePopover={closePopover}
+      />
     </div>
   )
 }
