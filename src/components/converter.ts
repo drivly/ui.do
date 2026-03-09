@@ -10,6 +10,7 @@ import { NavigationField } from './NavigationField'
 import { ButtonField } from './ButtonField'
 import { ImageField } from './ImageField'
 import { ChatControl } from './controls/ChatControl'
+import { ChatStreamControl } from './controls/ChatStreamControl'
 import { MarkdownControl } from './controls/MarkdownControl'
 import { StatusControl } from './controls/StatusControl'
 
@@ -36,6 +37,7 @@ export const defaultRegistry: ConverterRegistry = {
 
   // Extended controls (ui.do specific)
   chat: ChatControl,
+  'chat-stream': ChatStreamControl,
   markdown: MarkdownControl,
   status: StatusControl,
 }

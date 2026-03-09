@@ -70,6 +70,7 @@ export type FieldType =
   | 'image'
   // Extended controls (ui.do specific, rendered via converter)
   | 'chat'
+  | 'chat-stream'
   | 'markdown'
   | 'status'
 
