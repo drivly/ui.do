@@ -1,23 +1,11 @@
 import { useState } from 'react'
-import { bootstrapApp, extractClaims, fetchLayers } from '../api'
-import { LayerRenderer } from '../components/LayerRenderer'
-import type { ILayer } from '../types'
-
-const EXAMPLE = `Customer has Name | *:1
-Customer has Email | *:1
-Customer places Order | 1:*
-Order has OrderDate | *:1
-Order has Status | *:1
-Order contains Product | *:*
-Product has ProductName | *:1
-Product has Price | *:1`
-
-type Mode = 'describe' | 'manual'
+import { bootstrapApp, extractClaims } from '../api'
 
 interface ExtractedClaims {
+  domains?: Array<{ name: string; slug: string; nouns: string[] }>
   nouns: Array<{ name: string; objectType: string; plural?: string }>
-  readings: Array<{ text: string; multiplicity?: string }>
-  constraints: Array<{ text?: string; kind?: string; title?: string }>
+  readings: Array<{ text: string; nouns: string[]; predicate: string; multiplicity?: string }>
+  constraints: Array<{ kind: string; modality: string; reading: string; roles: number[] }>
   subtypes: Array<any>
   transitions: Array<any>
   facts: Array<any>
@@ -30,18 +18,11 @@ interface Props {
 
 export function BuildView({ onComplete, onCancel }: Props) {
   const [slug, setSlug] = useState('')
-  const [readingsText, setReadingsText] = useState('')
-  const [isBuilding, setIsBuilding] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [layers, setLayers] = useState<Record<string, ILayer> | null>(null)
-  const [currentLayer, setCurrentLayer] = useState('index')
-
-  // Describe mode state
-  const [mode, setMode] = useState<Mode>('describe')
   const [description, setDescription] = useState('')
   const [isExtracting, setIsExtracting] = useState(false)
+  const [isBuilding, setIsBuilding] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [extracted, setExtracted] = useState<ExtractedClaims | null>(null)
-  const [editedReadings, setEditedReadings] = useState('')
 
   const handleExtract = async () => {
     if (!description.trim()) return
@@ -53,12 +34,6 @@ export function BuildView({ onComplete, onCancel }: Props) {
       const data = await extractClaims(description.trim())
       const claims = data.claims || data
       setExtracted(claims)
-      // Auto-populate editable readings from extracted data
-      const lines = (claims.readings || [])
-        .map((r: { text: string; multiplicity?: string }) =>
-          `${r.text}${r.multiplicity ? ' | ' + r.multiplicity : ''}`)
-        .join('\n')
-      setEditedReadings(lines)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Extraction failed')
     } finally {
@@ -66,88 +41,19 @@ export function BuildView({ onComplete, onCancel }: Props) {
     }
   }
 
-  const handleBuildFromDescribe = async () => {
-    if (!slug.trim() || !editedReadings.trim()) return
-    setIsBuilding(true)
-    setError(null)
-    setLayers(null)
-
-    try {
-      const readings = editedReadings
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line && !line.startsWith('#'))
-        .map(line => {
-          const [text, mult] = line.split('|').map(s => s.trim())
-          return { text, multiplicity: mult || '*:1' }
-        })
-
-      await bootstrapApp(slug.trim(), readings)
-      const fetchedLayers = await fetchLayers(slug.trim())
-      setLayers(fetchedLayers as Record<string, ILayer>)
-      setCurrentLayer('index')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Build failed')
-    } finally {
-      setIsBuilding(false)
-    }
-  }
-
   const handleBuild = async () => {
-    if (!slug.trim() || !readingsText.trim()) return
+    if (!slug.trim() || !extracted) return
     setIsBuilding(true)
     setError(null)
-    setLayers(null)
 
     try {
-      const readings = readingsText
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line && !line.startsWith('#'))
-        .map(line => {
-          const [text, mult] = line.split('|').map(s => s.trim())
-          return { text, multiplicity: mult || '*:1' }
-        })
-
-      await bootstrapApp(slug.trim(), readings)
-      const fetchedLayers = await fetchLayers(slug.trim())
-      setLayers(fetchedLayers as Record<string, ILayer>)
-      setCurrentLayer('index')
+      await bootstrapApp(slug.trim(), extracted)
+      onComplete(slug.trim())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Build failed')
     } finally {
       setIsBuilding(false)
     }
-  }
-
-  const handleNavigate = (address: string) => {
-    const name = address.replace(/^\/layers\//, '/').replace(/^\//, '').replace(/\/$/, '') || 'index'
-    if (layers && layers[name]) setCurrentLayer(name)
-  }
-
-  if (layers) {
-    const layer = layers[currentLayer]
-    return (
-      <div className="max-w-2xl mx-auto">
-        <div className="flex items-center gap-3 mb-4">
-          {currentLayer !== 'index' && (
-            <button onClick={() => setCurrentLayer('index')}
-              className="text-sm text-muted-foreground hover:text-foreground">&larr; Back</button>
-          )}
-          <h1 className="text-lg font-medium text-foreground font-display">{layer?.title || currentLayer}</h1>
-          <div className="flex-1" />
-          <button onClick={() => onComplete(slug)}
-            className="text-sm text-primary-600 hover:underline">Open in app</button>
-          <button onClick={() => { setLayers(null); setCurrentLayer('index') }}
-            className="text-xs text-muted-foreground hover:text-foreground underline">New app</button>
-        </div>
-        {layer ? (
-          <LayerRenderer layer={layer} onNavigate={handleNavigate} />
-        ) : (
-          <p className="text-muted-foreground text-sm">Layer "{currentLayer}" not found.</p>
-        )}
-      </div>
-    )
   }
 
   return (
@@ -155,147 +61,117 @@ export function BuildView({ onComplete, onCancel }: Props) {
       <div className="flex items-center justify-between mb-2">
         <div>
           <h1 className="text-lg font-medium text-foreground font-display">New App</h1>
-          <p className="text-sm text-muted-foreground">
-            {mode === 'describe'
-              ? 'Describe your domain in plain English'
-              : 'Describe your domain as fact types, one per line'}
-          </p>
+          <p className="text-sm text-muted-foreground">Describe your app in plain English</p>
         </div>
         <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">Cancel</button>
       </div>
 
-      {/* Mode toggle */}
-      <div className="flex rounded-lg border border-border overflow-hidden">
-        <button
-          onClick={() => setMode('describe')}
-          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-            mode === 'describe'
-              ? 'bg-primary-600 text-white'
-              : 'bg-card text-muted-foreground hover:text-foreground hover:bg-accent'
-          }`}
-        >
-          Describe
-        </button>
-        <button
-          onClick={() => setMode('manual')}
-          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-            mode === 'manual'
-              ? 'bg-primary-600 text-white'
-              : 'bg-card text-muted-foreground hover:text-foreground hover:bg-accent'
-          }`}
-        >
-          Manual
-        </button>
-      </div>
-
       <input
         type="text"
-        placeholder="Domain slug (e.g. bike-rentals)"
+        placeholder="App slug (e.g. bike-rentals)"
         value={slug}
         onChange={e => setSlug(e.target.value)}
         className="w-full px-4 py-2 rounded-lg border border-border bg-card text-card-foreground focus:outline-none focus:ring-2 focus:ring-ring"
       />
 
-      {mode === 'describe' ? (
-        <>
-          <textarea
-            placeholder="Describe your domain in plain English...
+      <textarea
+        placeholder={"Describe your app in plain English...\n\nFor example: We run a bike rental shop. Customers can rent bikes by the hour. Each bike has a model name, size, and hourly rate. We need to track which customer rented which bike, when it was rented and returned."}
+        value={description}
+        onChange={e => setDescription(e.target.value)}
+        rows={6}
+        className="w-full px-4 py-3 rounded-lg border border-border bg-card text-card-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y"
+      />
 
-For example: We run a bike rental shop. Customers can rent bikes by the hour. Each bike has a model name, size, and hourly rate. We need to track which customer rented which bike, when it was rented and returned."
-            value={description}
-            onChange={e => setDescription(e.target.value)}
-            rows={6}
-            className="w-full px-4 py-3 rounded-lg border border-border bg-card text-card-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y"
-          />
+      <button
+        onClick={handleExtract}
+        disabled={isExtracting || !description.trim()}
+        className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {isExtracting ? 'Extracting...' : 'Extract Model'}
+      </button>
 
-          <button
-            onClick={handleExtract}
-            disabled={isExtracting || !description.trim()}
-            className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isExtracting ? 'Extracting...' : 'Extract Model'}
-          </button>
-
-          {extracted && (
-            <div className="space-y-4">
-              {/* Nouns preview */}
-              {extracted.nouns && extracted.nouns.length > 0 && (
-                <div className="p-3 rounded-lg border border-border bg-card">
-                  <h3 className="text-sm font-medium text-foreground mb-2">Nouns</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {extracted.nouns.map((noun, i) => (
-                      <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-muted text-sm text-foreground">
-                        {noun.name}
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${
-                          noun.objectType === 'entity'
-                            ? 'bg-primary-600/10 text-primary-600'
-                            : 'bg-muted-foreground/10 text-muted-foreground'
-                        }`}>
-                          {noun.objectType}
-                        </span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Constraints preview */}
-              {extracted.constraints && extracted.constraints.length > 0 && (
-                <div className="p-3 rounded-lg border border-border bg-card">
-                  <h3 className="text-sm font-medium text-foreground mb-2">Constraints</h3>
-                  <ul className="space-y-1">
-                    {extracted.constraints.map((c, i) => (
-                      <li key={i} className="text-sm text-muted-foreground font-mono">
-                        {c.text || c.title || c.kind || JSON.stringify(c)}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Editable readings */}
-              <div className="p-3 rounded-lg border border-border bg-card">
-                <h3 className="text-sm font-medium text-foreground mb-2">Readings</h3>
-                <textarea
-                  value={editedReadings}
-                  onChange={e => setEditedReadings(e.target.value)}
-                  rows={Math.max(6, editedReadings.split('\n').length + 1)}
-                  className="w-full px-3 py-2 rounded-md border border-border bg-background text-card-foreground font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y"
-                />
+      {extracted && (
+        <div className="space-y-4">
+          {/* Domains preview */}
+          {extracted.domains && extracted.domains.length > 0 && (
+            <div className="p-3 rounded-lg border border-border bg-card">
+              <h3 className="text-sm font-medium text-foreground mb-2">Domains</h3>
+              <div className="flex flex-wrap gap-2">
+                {extracted.domains.map((d, i) => (
+                  <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-primary-600/30 bg-primary-600/10 text-sm text-foreground">
+                    {d.name}
+                    <span className="text-xs text-muted-foreground">{d.nouns.length}</span>
+                  </span>
+                ))}
               </div>
-
-              <button
-                onClick={handleBuildFromDescribe}
-                disabled={isBuilding || !slug.trim() || !editedReadings.trim()}
-                className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isBuilding ? 'Building...' : 'Build App'}
-              </button>
             </div>
           )}
-        </>
-      ) : (
-        <>
-          <textarea
-            placeholder={"Entity has Property | multiplicity\ne.g. Customer has Name | *:1"}
-            value={readingsText}
-            onChange={e => setReadingsText(e.target.value)}
-            rows={10}
-            className="w-full px-4 py-3 rounded-lg border border-border bg-card text-card-foreground font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y"
-          />
 
-          <div className="flex gap-2">
-            <button onClick={() => setReadingsText(EXAMPLE)}
-              className="px-4 py-2 text-sm text-muted-foreground bg-muted rounded-lg hover:bg-accent">
-              Load Example
-            </button>
-            <button onClick={handleBuild}
-              disabled={isBuilding || !slug.trim() || !readingsText.trim()}
-              className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed">
-              {isBuilding ? 'Building...' : 'Build App'}
-            </button>
-          </div>
-        </>
+          {/* Nouns preview */}
+          {extracted.nouns && extracted.nouns.length > 0 && (
+            <div className="p-3 rounded-lg border border-border bg-card">
+              <h3 className="text-sm font-medium text-foreground mb-2">Nouns</h3>
+              <div className="flex flex-wrap gap-2">
+                {extracted.nouns.map((noun, i) => (
+                  <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-muted text-sm text-foreground">
+                    {noun.name}
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      noun.objectType === 'entity'
+                        ? 'bg-primary-600/10 text-primary-600'
+                        : 'bg-muted-foreground/10 text-muted-foreground'
+                    }`}>
+                      {noun.objectType}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Readings preview */}
+          {extracted.readings && extracted.readings.length > 0 && (
+            <div className="p-3 rounded-lg border border-border bg-card">
+              <h3 className="text-sm font-medium text-foreground mb-2">Readings</h3>
+              <ul className="space-y-1">
+                {extracted.readings.map((r, i) => (
+                  <li key={i} className="text-sm font-mono text-foreground/80 flex items-center gap-2">
+                    <span>{r.text}</span>
+                    {r.multiplicity && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{r.multiplicity}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Constraints preview */}
+          {extracted.constraints && extracted.constraints.length > 0 && (
+            <div className="p-3 rounded-lg border border-border bg-card">
+              <h3 className="text-sm font-medium text-foreground mb-2">Constraints</h3>
+              <ul className="space-y-1">
+                {extracted.constraints.map((c: any, i: number) => (
+                  <li key={i} className="text-sm text-muted-foreground font-mono flex items-center gap-2">
+                    <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-semibold ${
+                      c.kind === 'UC' ? 'bg-blue-500/20 text-blue-400' : 'bg-amber-500/20 text-amber-400'
+                    }`}>{c.kind}</span>
+                    <span className="text-foreground/70">{c.reading || ''}</span>
+                    {c.roles && <span className="text-muted-foreground text-xs">role{c.roles.length > 1 ? 's' : ''} {c.roles.join(', ')}</span>}
+                    {c.modality === 'Deontic' && <span className="text-xs text-orange-400">(deontic)</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <button
+            onClick={handleBuild}
+            disabled={isBuilding || !slug.trim()}
+            className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isBuilding ? 'Building...' : 'Build App'}
+          </button>
+        </div>
       )}
 
       {error && (

@@ -48,6 +48,24 @@ export async function fetchSession(): Promise<Session | null> {
   }
 }
 
+export interface AppRecord {
+  id: string
+  name: string
+  slug: string
+  tenant?: string
+  visibility?: string
+  description?: string
+  domains?: string[] | Domain[]
+}
+
+export async function fetchApps(): Promise<AppRecord[]> {
+  const res = await apiFetch('/graphdl/raw/apps?depth=1&pagination=false')
+  if (!res.ok) throw new Error('Failed to fetch apps')
+  const data = await res.json()
+  const docs = data.docs || data
+  return Array.isArray(docs) ? docs : []
+}
+
 export interface Domain {
   id: string
   slug?: string
@@ -163,11 +181,11 @@ export async function fetchLayers(domain?: string): Promise<Record<string, any>>
   return layers
 }
 
-export async function bootstrapApp(slug: string, readings: { text: string; multiplicity?: string }[]) {
+export async function bootstrapApp(slug: string, claims: any) {
   const res = await apiFetch('/graphdl/bootstrap', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ slug, readings }),
+    body: JSON.stringify({ slug, claims }),
   })
   if (!res.ok) {
     const err = await res.text()
@@ -226,6 +244,11 @@ export async function writeDashboardPref(domainId: string, dashboardNounId: stri
 export async function deleteDashboardPref(id: string): Promise<void> {
   const res = await apiFetch(`/graphdl/raw/resources/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(`Failed to delete dashboard pref: ${res.status}`)
+}
+
+export async function deleteApp(appId: string): Promise<void> {
+  const res = await apiFetch(`/graphdl/raw/apps/${appId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Failed to delete app: ${res.status}`)
 }
 
 export async function extractClaims(text: string): Promise<any> {

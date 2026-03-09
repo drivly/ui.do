@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchLayers, fetchReadings, fetchGraphs, sendStateEvent, type Domain, type Reading, type GraphInstance } from '../api'
+import { fetchLayers, sendStateEvent, type Domain } from '../api'
 import { formatNounName } from '../utils'
 import { LayerRenderer } from '../components/LayerRenderer'
 import type { ILayer, IActionButton } from '../types'
@@ -71,49 +71,25 @@ function findLayerKey(keys: string[], entityName: string): string | undefined {
   return undefined
 }
 
-/** Filter readings that mention an entity name (case-insensitive word boundary match) */
-function readingsForEntity(readings: Reading[], entityName: string): Reading[] {
-  const re = new RegExp(`\\b${entityName}\\b`, 'i')
-  return readings.filter(r => re.test(r.text))
-}
-
-/** Filter graphs whose schema title mentions an entity name */
-function graphsForEntity(graphs: GraphInstance[], entityName: string): GraphInstance[] {
-  const re = new RegExp(`\\b${entityName}\\b`, 'i')
-  return graphs.filter(g => {
-    const schemaTitle = typeof g.type === 'object' ? g.type?.title || '' : ''
-    return re.test(schemaTitle) || re.test(g.title)
-  })
-}
-
 export function EntityListView({ domain, entityName }: Props) {
   const [layers, setLayers] = useState<Record<string, ILayer> | null>(null)
   const [navStack, setNavStack] = useState<string[]>([])
-  const [readings, setReadings] = useState<Reading[]>([])
-  const [graphs, setGraphs] = useState<GraphInstance[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const currentLayer = navStack.length > 0 ? navStack[navStack.length - 1] : null
-  const listLayer = layers ? findLayerKey(Object.keys(layers), entityName) : undefined
-  const isOnListLayer = currentLayer === listLayer
 
   const refreshData = useCallback((resetNav = true) => {
     const slug = domain.domainSlug || domain.slug
-    return Promise.all([
-      fetchLayers(slug).then(l => l as Record<string, ILayer>),
-      fetchReadings(domain.id),
-      fetchGraphs(domain.id),
-    ]).then(([l, r, g]) => {
-      setLayers(l)
-      setReadings(r)
-      setGraphs(g)
+    return fetchLayers(slug).then(l => {
+      const layers = l as Record<string, ILayer>
+      setLayers(layers)
       if (resetNav) {
-        const initial = findLayerKey(Object.keys(l), entityName)
+        const initial = findLayerKey(Object.keys(layers), entityName)
         setNavStack(initial ? [initial] : [])
       }
     })
-  }, [domain.domainSlug, domain.slug, domain.id, entityName])
+  }, [domain.domainSlug, domain.slug, entityName])
 
   useEffect(() => {
     setLoading(true)
@@ -186,70 +162,7 @@ export function EntityListView({ domain, entityName }: Props) {
   const layer = layers[currentLayer]
   const canGoBack = navStack.length > 1
 
-  // On the list layer, replace the template list items with readings + graphs
-  if (isOnListLayer) {
-    const schema = readingsForEntity(readings, entityName)
-    const instances = graphsForEntity(graphs, entityName)
-    return (
-      <div className="max-w-2xl mx-auto">
-        {canGoBack && (
-          <button onClick={handleBack}
-            className="text-sm text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-1">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-            Back
-          </button>
-        )}
-
-        <h1 className="text-xl font-bold text-foreground font-display mb-6">{displayName}</h1>
-
-        {/* Schema readings (fact types) */}
-        {schema.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Fact Types</h2>
-            <div className="space-y-2">
-              {schema.map(r => (
-                <div key={r.id} className="bg-card border border-border rounded-lg p-3 text-sm text-card-foreground">
-                  {r.text}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Instance facts (from graphs collection) */}
-        {instances.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Instance Facts</h2>
-            <div className="space-y-2">
-              {instances.map(g => (
-                <div key={g.id} className="bg-card border border-border rounded-lg p-3 text-sm text-card-foreground">
-                  {g.title}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {schema.length === 0 && instances.length === 0 && (
-          <p className="text-muted-foreground text-sm">No readings found for {displayName}.</p>
-        )}
-
-        {/* Still show action buttons from the layer (e.g., "New Invoice") */}
-        {layer.type === 'layer' && layer.actionButtons?.length ? (
-          <div className="mt-4 flex gap-2">
-            {layer.actionButtons.map(btn => (
-              <button key={btn.id} onClick={() => handleAction(btn)}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium">
-                {btn.text}
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </div>
-    )
-  }
-
-  // Non-list layers (detail, edit, create) render normally via LayerRenderer
+  // All layers (list, detail, edit, create) render via LayerRenderer
   return (
     <div className="max-w-2xl mx-auto">
       {canGoBack && (

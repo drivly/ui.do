@@ -1,13 +1,14 @@
-import { useState, useCallback, useEffect, Component, type ReactNode } from 'react'
+import { useState, useCallback, useEffect, useRef, Component, type ReactNode } from 'react'
 import { useSession } from './hooks/useSession'
-import { useDomains } from './hooks/useDomains'
+import { useApps } from './hooks/useApps'
 import { useNouns } from './hooks/useNouns'
-import { redirectToLogin } from './api'
+import { redirectToLogin, deleteApp, type AppRecord, type Domain } from './api'
 import { DashboardView } from './pages/DashboardView'
 import { EntityListView } from './pages/EntityListView'
 import { SchemaView } from './pages/SchemaView'
 import { UoDView } from './pages/UoDView'
 import { BuildView } from './pages/BuildView'
+import { OverboardView } from './pages/OverboardView'
 import { nounDisplayName, formatDomainLabel } from './utils'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -44,129 +45,262 @@ type View =
   | { type: 'uod' }
   | { type: 'build' }
 
-
-function parseUrlState(domains: { id: string; domainSlug?: string; slug?: string }[]): { domainId: string | null; view: View } | null {
-  const params = new URLSearchParams(window.location.search)
-  const domainSlug = params.get('domain')
-  const viewType = params.get('view')
-  if (!domainSlug && !viewType) return null
-
-  if (viewType === 'uod') return { domainId: null, view: { type: 'uod' } }
-  if (viewType === 'build') return { domainId: null, view: { type: 'build' } }
-
-  const domain = domainSlug ? domains.find(d => (d.domainSlug || d.slug) === domainSlug) : undefined
-  const domainId = domain?.id || null
-
-  if (viewType === 'schema') return { domainId, view: { type: 'schema' } }
-  if (viewType === 'entity') {
-    const noun = params.get('noun')
-    if (noun) return { domainId, view: { type: 'entity', noun } }
-  }
-
-  return { domainId, view: { type: 'dashboard' } }
+/** Extract domains from an app record (handles both populated and ID-only) */
+function getAppDomains(app: AppRecord): Domain[] {
+  if (!app.domains) return []
+  return (app.domains as any[]).filter(d => typeof d === 'object' && d !== null)
 }
 
-function syncUrlState(domains: { id: string; domainSlug?: string; slug?: string }[], domainId: string | null, view: View) {
-  const params = new URLSearchParams()
-  if (domainId) {
-    const d = domains.find(d => d.id === domainId)
-    if (d) params.set('domain', d.domainSlug || d.slug || d.id)
-  }
-  if (view.type !== 'dashboard') params.set('view', view.type)
-  if (view.type === 'entity') params.set('noun', (view as any).noun)
-
-  const search = params.toString()
-  const url = search ? `?${search}` : window.location.pathname
-  window.history.replaceState(null, '', url)
+/** Format an app name for display */
+function formatAppLabel(app: AppRecord): string {
+  const raw = app.name || app.slug
+  if (raw.includes(' ')) return raw
+  return raw.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
 }
 
 function AppContent() {
   const { session, isAdmin, loading: sessionLoading } = useSession()
-  const { domains, loading: domainsLoading, error: domainsError, refresh: refreshDomains } = useDomains()
+  const { apps, loading: appsLoading, error: appsError, refresh: refreshApps } = useApps()
   const { dark, toggle: toggleTheme } = useTheme()
 
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
   const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null)
   const [view, setView] = useState<View>({ type: 'dashboard' })
   const [urlRestored, setUrlRestored] = useState(false)
+  const [appDropdownOpen, setAppDropdownOpen] = useState(false)
+  const [pendingAppSlug, setPendingAppSlug] = useState<string | null>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Restore state from URL once domains are loaded
+  // Close dropdown on outside click
   useEffect(() => {
-    if (urlRestored || domains.length === 0) return
-    const state = parseUrlState(domains)
-    if (state) {
-      setSelectedDomainId(state.domainId)
-      setView(state.view)
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setAppDropdownOpen(false)
+      }
     }
-    setUrlRestored(true)
-  }, [domains, urlRestored])
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
-  // Sync state to URL whenever it changes
+  // Restore state from URL once apps are loaded
   useEffect(() => {
-    if (!urlRestored || domains.length === 0) return
-    syncUrlState(domains, selectedDomainId, view)
-  }, [domains, selectedDomainId, view, urlRestored])
+    if (urlRestored || apps.length === 0) return
+    const params = new URLSearchParams(window.location.search)
+    const appSlug = params.get('app')
+    const domainSlug = params.get('domain')
+    const viewType = params.get('view')
 
-  const selectedDomain = selectedDomainId === null ? undefined : (domains.find(d => d.id === selectedDomainId) || domains[0])
+    if (viewType === 'build') {
+      setView({ type: 'build' })
+      setUrlRestored(true)
+      return
+    }
+
+    // Find app by slug
+    if (appSlug) {
+      const app = apps.find(a => a.slug === appSlug)
+      if (app) {
+        setSelectedAppId(app.id)
+        const domains = getAppDomains(app)
+        // Find domain within app
+        if (domainSlug) {
+          const domain = domains.find(d => (d.domainSlug || d.slug) === domainSlug)
+          if (domain) setSelectedDomainId(domain.id)
+          else if (domains.length === 1) setSelectedDomainId(domains[0].id)
+        } else if (domains.length === 1) {
+          setSelectedDomainId(domains[0].id)
+        }
+        // Multi-domain apps with no domain slug → overboard (selectedDomainId stays null)
+      }
+    }
+
+    if (viewType === 'uod') setView({ type: 'uod' })
+    else if (viewType === 'schema') setView({ type: 'schema' })
+    else if (viewType === 'entity') {
+      const noun = params.get('noun')
+      if (noun) setView({ type: 'entity', noun })
+    }
+
+    setUrlRestored(true)
+  }, [apps, urlRestored])
+
+  // Sync state to URL
+  useEffect(() => {
+    if (!urlRestored || apps.length === 0) return
+    const params = new URLSearchParams()
+    const selectedApp = apps.find(a => a.id === selectedAppId)
+    if (selectedApp) params.set('app', selectedApp.slug)
+    if (selectedDomainId && selectedApp) {
+      const domains = getAppDomains(selectedApp)
+      const domain = domains.find(d => d.id === selectedDomainId)
+      if (domain && domains.length > 1) params.set('domain', domain.domainSlug || domain.slug || domain.id)
+    }
+    if (view.type !== 'dashboard') params.set('view', view.type)
+    if (view.type === 'entity') params.set('noun', (view as any).noun)
+
+    const search = params.toString()
+    const url = search ? `?${search}` : window.location.pathname
+    window.history.replaceState(null, '', url)
+  }, [apps, selectedAppId, selectedDomainId, view, urlRestored])
+
+  const selectedApp = selectedAppId ? apps.find(a => a.id === selectedAppId) : undefined
+  const appDomains = selectedApp ? getAppDomains(selectedApp) : []
+  const selectedDomain = selectedDomainId ? appDomains.find(d => d.id === selectedDomainId) || appDomains[0] : (appDomains.length === 1 ? appDomains[0] : null)
   const { nouns } = useNouns(selectedDomain?.id)
+
+  // When apps refresh and we have a pending slug, select the new app
+  useEffect(() => {
+    if (!pendingAppSlug || apps.length === 0) return
+    const app = apps.find(a => a.slug === pendingAppSlug)
+    if (app) {
+      setSelectedAppId(app.id)
+      const domains = getAppDomains(app)
+      // Multi-domain apps start on overboard ("All" tab), single-domain auto-selects
+      if (domains.length === 1) setSelectedDomainId(domains[0].id)
+      else setSelectedDomainId(null)
+      setView({ type: 'dashboard' })
+      setPendingAppSlug(null)
+    }
+  }, [apps, pendingAppSlug])
+
+  // Auto-select first app if none selected
+  useEffect(() => {
+    if (!selectedAppId && apps.length > 0 && view.type !== 'build' && view.type !== 'uod') {
+      setSelectedAppId(apps[0].id)
+      const domains = getAppDomains(apps[0])
+      // Multi-domain apps start on overboard, single-domain auto-selects
+      if (domains.length === 1) setSelectedDomainId(domains[0].id)
+      else setSelectedDomainId(null)
+    }
+  }, [apps, selectedAppId, view.type])
 
   if (sessionLoading) return <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">Loading...</div>
 
-  const handleSelectDomain = (id: string) => {
-    setSelectedDomainId(id)
+  const handleSelectApp = (appId: string) => {
+    setSelectedAppId(appId)
+    setAppDropdownOpen(false)
+    const app = apps.find(a => a.id === appId)
+    const domains = app ? getAppDomains(app) : []
+    // Multi-domain apps start on overboard, single-domain auto-selects
+    setSelectedDomainId(domains.length === 1 ? domains[0].id : null)
     setView({ type: 'dashboard' })
   }
 
-  const handleSelectAll = () => {
-    setSelectedDomainId(null)
-    setView({ type: 'uod' })
+  const handleSelectDomain = (domainId: string) => {
+    setSelectedDomainId(domainId)
+    setView({ type: 'dashboard' })
   }
 
   const handleBuildComplete = (slug: string) => {
-    refreshDomains()
-    const d = domains.find(d => (d.domainSlug || d.slug) === slug)
-    if (d) setSelectedDomainId(d.id)
-    setView({ type: 'dashboard' })
+    setPendingAppSlug(slug)
+    refreshApps()
   }
 
-  // Auto-select first domain if none selected and domains loaded
-  if (selectedDomainId === null && domains.length > 0 && view.type !== 'build' && view.type !== 'uod') {
-    setSelectedDomainId(domains[0].id)
+  const handleDeleteApp = async (appId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm('Delete this app? This cannot be undone.')) return
+    try {
+      await deleteApp(appId)
+      if (selectedAppId === appId) {
+        setSelectedAppId(null)
+        setSelectedDomainId(null)
+        setView({ type: 'dashboard' })
+      }
+      refreshApps()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete app')
+    }
+    setAppDropdownOpen(false)
   }
 
   return (
     <div className="flex flex-col h-dvh bg-background overflow-hidden">
-      {/* Header — adapts to theme like auto.dev dashboard */}
+      {/* Header */}
       <header className="bg-card border-b border-border px-4 py-3 flex-shrink-0">
         <div className="flex items-center gap-3">
           <span className="font-display font-bold text-base tracking-tight flex-shrink-0 text-foreground">ui.do</span>
 
-          <div className="flex flex-wrap items-center gap-1 flex-1 min-w-0">
-            {domainsLoading ? (
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            {appsLoading ? (
               <span className="text-sm text-muted-foreground">Loading...</span>
-            ) : domainsError ? (
-              <span className="text-sm text-destructive">{domainsError}</span>
+            ) : appsError ? (
+              <span className="text-sm text-destructive">{appsError}</span>
             ) : (
               <>
-                <button
-                  onClick={handleSelectAll}
-                  className={`px-3 py-1 text-sm rounded-md transition-colors whitespace-nowrap ${
-                    selectedDomainId === null && view.type === 'uod'
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                  }`}>
-                  All
-                </button>
-                {domains.map(d => (
-                  <button key={d.id}
-                    onClick={() => handleSelectDomain(d.id)}
-                    className={`px-3 py-1 text-sm rounded-md transition-colors whitespace-nowrap ${
-                      d.id === selectedDomain?.id
+                {/* App dropdown */}
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    onClick={() => setAppDropdownOpen(!appDropdownOpen)}
+                    className={`px-3 py-1.5 text-sm rounded-md transition-colors flex items-center gap-1.5 ${
+                      selectedApp
                         ? 'bg-primary-600 text-white'
                         : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                    }`}>
-                    {formatDomainLabel(d)}
+                    }`}
+                  >
+                    {selectedApp ? formatAppLabel(selectedApp) : 'Select App'}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                   </button>
-                ))}
+
+                  {appDropdownOpen && (
+                    <div className="absolute top-full left-0 mt-1 w-56 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
+                      {apps.map(app => (
+                        <button
+                          key={app.id}
+                          onClick={() => handleSelectApp(app.id)}
+                          className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                            app.id === selectedAppId
+                              ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400'
+                              : 'text-foreground hover:bg-muted'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="font-medium">{formatAppLabel(app)}</div>
+                            <button
+                              onClick={(e) => handleDeleteApp(app.id, e)}
+                              className="p-0.5 rounded text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                              title="Delete app"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                            </button>
+                          </div>
+                          <div className="text-xs text-muted-foreground">{getAppDomains(app).length} domain{getAppDomains(app).length !== 1 ? 's' : ''}</div>
+                        </button>
+                      ))}
+                      {apps.length === 0 && (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">No apps yet</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Domain tabs within selected app */}
+                {selectedApp && appDomains.length > 1 && (
+                  <div className="flex items-center gap-1 border-l border-border pl-2 ml-1">
+                    <button
+                      onClick={() => { setSelectedDomainId(null); setView({ type: 'dashboard' }) }}
+                      className={`px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap ${
+                        !selectedDomainId
+                          ? 'bg-muted text-foreground font-medium'
+                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                      }`}
+                    >
+                      All
+                    </button>
+                    {appDomains.map(d => (
+                      <button
+                        key={d.id}
+                        onClick={() => handleSelectDomain(d.id)}
+                        className={`px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap ${
+                          d.id === selectedDomain?.id
+                            ? 'bg-muted text-foreground font-medium'
+                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                        }`}
+                      >
+                        {formatDomainLabel(d)}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -230,7 +364,7 @@ function AppContent() {
 
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto p-6">
-          {!session && !domainsLoading && domains.length === 0 && view.type !== 'build' && (
+          {!session && !appsLoading && apps.length === 0 && view.type !== 'build' && (
             <div className="text-center py-12">
               <p className="text-muted-foreground mb-4">Sign in to view your apps</p>
               <button onClick={redirectToLogin} className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors">
@@ -241,8 +375,16 @@ function AppContent() {
           {view.type === 'build' && (
             <BuildView onComplete={handleBuildComplete} onCancel={() => setView({ type: 'dashboard' })} />
           )}
-          {view.type === 'uod' && (
-            <UoDView domains={domains} onSelectDomain={handleSelectDomain} />
+          {view.type === 'uod' && selectedApp && (
+            <UoDView domains={appDomains} onSelectDomain={handleSelectDomain} />
+          )}
+          {view.type === 'dashboard' && !selectedDomainId && selectedApp && appDomains.length > 1 && (
+            <OverboardView
+              domains={appDomains}
+              appName={formatAppLabel(selectedApp)}
+              onSelectDomain={handleSelectDomain}
+              onNavigate={setView}
+            />
           )}
           {view.type === 'dashboard' && selectedDomain && (
             <DashboardView domain={selectedDomain} nouns={nouns} isAdmin={isAdmin} onNavigate={setView} />
