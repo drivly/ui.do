@@ -246,6 +246,18 @@ export async function deleteDashboardPref(id: string): Promise<void> {
   if (!res.ok) throw new Error(`Failed to delete dashboard pref: ${res.status}`)
 }
 
+/** Update a dashboard config fact's value */
+export async function updateDashboardFact(id: string, value: string): Promise<Resource> {
+  const res = await apiFetch(`/graphdl/raw/resources/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value }),
+  })
+  if (!res.ok) throw new Error(`Failed to update dashboard fact: ${res.status}`)
+  const data = await res.json()
+  return data.doc
+}
+
 export async function deleteApp(appId: string): Promise<void> {
   const res = await apiFetch(`/graphdl/raw/apps/${appId}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(`Failed to delete app: ${res.status}`)
@@ -271,4 +283,70 @@ export async function sendStateEvent(machineType: string, instanceId: string, ev
     body: JSON.stringify({}),
   })
   return res.json()
+}
+
+/**
+ * Send a chat message and stream the response via fetch ReadableStream.
+ * Calls the support agent or /ai/chat endpoint.
+ */
+export async function streamChat(
+  endpoint: string,
+  body: Record<string, unknown>,
+  onChunk: (text: string) => void,
+  onDone: (fullResponse: any) => void,
+  onError: (error: Error) => void,
+): Promise<void> {
+  try {
+    const res = await fetch(`${API_URL}${endpoint}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+      throw new Error(`Chat request failed: ${res.status}`)
+    }
+
+    const reader = res.body?.getReader()
+    if (!reader) {
+      // Non-streaming fallback: parse full JSON response
+      const data = await res.json()
+      onDone(data)
+      return
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6)
+          if (data === '[DONE]') {
+            onDone({})
+            return
+          }
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed.content) onChunk(parsed.content)
+            if (parsed.done) onDone(parsed)
+          } catch {
+            onChunk(data)
+          }
+        }
+      }
+    }
+
+    onDone({})
+  } catch (err) {
+    onError(err instanceof Error ? err : new Error(String(err)))
+  }
 }
