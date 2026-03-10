@@ -414,35 +414,36 @@ function AppContent() {
             )}
           </div>
 
-          {/* Domain tabs — scrollable */}
-          {selectedApp && appDomains.length > 1 && (
-            <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0 hide-scrollbar">
+        </div>
+
+        {/* Domain tabs — own row, wrapping */}
+        {selectedApp && appDomains.length > 1 && (
+          <div className="flex flex-wrap items-center gap-1 mt-2">
+            <button
+              onClick={() => { setSelectedDomainId(null); setView({ type: 'dashboard' }) }}
+              className={`px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap ${
+                !selectedDomainId
+                  ? 'bg-muted text-foreground font-medium'
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+              }`}
+            >
+              All
+            </button>
+            {appDomains.map(d => (
               <button
-                onClick={() => { setSelectedDomainId(null); setView({ type: 'dashboard' }) }}
-                className={`px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap flex-shrink-0 ${
-                  !selectedDomainId
+                key={d.id}
+                onClick={() => handleSelectDomain(d.id)}
+                className={`px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap ${
+                  d.id === selectedDomain?.id
                     ? 'bg-muted text-foreground font-medium'
                     : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                 }`}
               >
-                All
+                {formatDomainLabel(d)}
               </button>
-              {appDomains.map(d => (
-                <button
-                  key={d.id}
-                  onClick={() => handleSelectDomain(d.id)}
-                  className={`px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap flex-shrink-0 ${
-                    d.id === selectedDomain?.id
-                      ? 'bg-muted text-foreground font-medium'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                  }`}
-                >
-                  {formatDomainLabel(d)}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </header>
 
       <PaneLayout
