@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect, useRef, Component, type ReactNode } from 'react'
 import { useSession } from './hooks/useSession'
 import { useApps } from './hooks/useApps'
+import { useOrganizations } from './hooks/useOrganizations'
 import { useNouns } from './hooks/useNouns'
-import { redirectToLogin, deleteApp, type AppRecord, type Domain } from './api'
+import { redirectToLogin, deleteApp, type AppRecord, type Domain, type Organization } from './api'
 import { DashboardView } from './pages/DashboardView'
 import { EntityListView } from './pages/EntityListView'
 import { SchemaView } from './pages/SchemaView'
@@ -59,31 +60,63 @@ function formatAppLabel(app: AppRecord): string {
   return raw.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
 }
 
+/** Get the org ID from an app record (handles populated and ID-only) */
+function getAppOrgId(app: AppRecord): string | null {
+  if (!app.organization) return null
+  return typeof app.organization === 'string' ? app.organization : app.organization.id
+}
+
+/** Format org name for display */
+function formatOrgName(org: Organization): string {
+  const raw = org.name || org.slug || org.id
+  if (raw.includes(' ')) return raw
+  return raw.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+}
+
 function AppContent() {
   const { session, isAdmin, loading: sessionLoading } = useSession()
   const { apps, loading: appsLoading, error: appsError, refresh: refreshApps } = useApps()
+  const { orgs, loading: orgsLoading } = useOrganizations()
   const { dark, toggle: toggleTheme } = useTheme()
 
   const { layout, navigate: paneNavigate, goBack, closePopover } = usePaneNavigation()
 
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null)
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
   const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null)
   const [view, setView] = useState<View>({ type: 'dashboard' })
   const [urlRestored, setUrlRestored] = useState(false)
   const [appDropdownOpen, setAppDropdownOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [pendingAppSlug, setPendingAppSlug] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
-  // Close dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setAppDropdownOpen(false)
       }
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
+
+  // Auto-select first org when orgs load
+  useEffect(() => {
+    if (!selectedOrgId && orgs.length > 0) {
+      setSelectedOrgId(orgs[0].id)
+    }
+  }, [orgs, selectedOrgId])
+
+  // Filter apps by selected org
+  const filteredApps = selectedOrgId
+    ? apps.filter(a => getAppOrgId(a) === selectedOrgId)
+    : apps
 
   // Restore state from URL once apps are loaded
   useEffect(() => {
@@ -92,6 +125,13 @@ function AppContent() {
     const appSlug = params.get('app')
     const domainSlug = params.get('domain')
     const viewType = params.get('view')
+    const orgSlug = params.get('org')
+
+    // Restore org from URL
+    if (orgSlug && orgs.length > 0) {
+      const org = orgs.find(o => o.slug === orgSlug)
+      if (org) setSelectedOrgId(org.id)
+    }
 
     if (viewType === 'build') {
       setView({ type: 'build' })
@@ -103,6 +143,9 @@ function AppContent() {
     if (appSlug) {
       const app = apps.find(a => a.slug === appSlug)
       if (app) {
+        // Also set org to match the app's org
+        const appOrgId = getAppOrgId(app)
+        if (appOrgId) setSelectedOrgId(appOrgId)
         setSelectedAppId(app.id)
         const domains = getAppDomains(app)
         // Find domain within app
@@ -125,12 +168,14 @@ function AppContent() {
     }
 
     setUrlRestored(true)
-  }, [apps, urlRestored])
+  }, [apps, orgs, urlRestored])
 
   // Sync state to URL
   useEffect(() => {
     if (!urlRestored || apps.length === 0) return
     const params = new URLSearchParams()
+    const selectedOrg = orgs.find(o => o.id === selectedOrgId)
+    if (selectedOrg && orgs.length > 1) params.set('org', selectedOrg.slug || selectedOrg.id)
     const selectedApp = apps.find(a => a.id === selectedAppId)
     if (selectedApp) params.set('app', selectedApp.slug)
     if (selectedDomainId && selectedApp) {
@@ -144,9 +189,9 @@ function AppContent() {
     const search = params.toString()
     const url = search ? `?${search}` : window.location.pathname
     window.history.replaceState(null, '', url)
-  }, [apps, selectedAppId, selectedDomainId, view, urlRestored])
+  }, [apps, orgs, selectedOrgId, selectedAppId, selectedDomainId, view, urlRestored])
 
-  const selectedApp = selectedAppId ? apps.find(a => a.id === selectedAppId) : undefined
+  const selectedApp = selectedAppId ? filteredApps.find(a => a.id === selectedAppId) || apps.find(a => a.id === selectedAppId) : undefined
   const appDomains = selectedApp ? getAppDomains(selectedApp) : []
   const selectedDomain = selectedDomainId ? appDomains.find(d => d.id === selectedDomainId) || appDomains[0] : (appDomains.length === 1 ? appDomains[0] : null)
   const { nouns } = useNouns(selectedDomain?.id)
@@ -166,16 +211,20 @@ function AppContent() {
     }
   }, [apps, pendingAppSlug])
 
-  // Auto-select first app if none selected
+  // Auto-select first app if none selected (or current app not in filtered list)
   useEffect(() => {
-    if (!selectedAppId && apps.length > 0 && view.type !== 'build' && view.type !== 'uod') {
-      setSelectedAppId(apps[0].id)
-      const domains = getAppDomains(apps[0])
-      // Multi-domain apps start on overboard, single-domain auto-selects
+    if (view.type === 'build' || view.type === 'uod') return
+    const currentInFiltered = selectedAppId && filteredApps.some(a => a.id === selectedAppId)
+    if (!currentInFiltered && filteredApps.length > 0) {
+      setSelectedAppId(filteredApps[0].id)
+      const domains = getAppDomains(filteredApps[0])
       if (domains.length === 1) setSelectedDomainId(domains[0].id)
       else setSelectedDomainId(null)
+    } else if (!currentInFiltered && filteredApps.length === 0) {
+      setSelectedAppId(null)
+      setSelectedDomainId(null)
     }
-  }, [apps, selectedAppId, view.type])
+  }, [filteredApps, selectedAppId, view.type])
 
   if (sessionLoading) return <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">Loading...</div>
 
@@ -226,6 +275,8 @@ function AppContent() {
           <div className="flex items-center gap-2 flex-1 min-w-0">
             {appsLoading ? (
               <span className="text-sm text-muted-foreground">Loading...</span>
+            ) : appsError === 'Unauthorized' ? (
+              <button onClick={redirectToLogin} className="text-sm text-primary-400 hover:text-primary-300 transition-colors">Sign in</button>
             ) : appsError ? (
               <span className="text-sm text-destructive">{appsError}</span>
             ) : (
@@ -246,7 +297,7 @@ function AppContent() {
 
                   {appDropdownOpen && (
                     <div className="absolute top-full left-0 mt-1 w-56 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
-                      {apps.map(app => (
+                      {filteredApps.map(app => (
                         <button
                           key={app.id}
                           onClick={() => handleSelectApp(app.id)}
@@ -269,8 +320,8 @@ function AppContent() {
                           <div className="text-xs text-muted-foreground">{getAppDomains(app).length} domain{getAppDomains(app).length !== 1 ? 's' : ''}</div>
                         </button>
                       ))}
-                      {apps.length === 0 && (
-                        <div className="px-3 py-2 text-sm text-muted-foreground">No apps yet</div>
+                      {filteredApps.length === 0 && (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">No apps in this workspace</div>
                       )}
                     </div>
                   )}
@@ -314,20 +365,79 @@ function AppContent() {
               className="px-3 py-1 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors whitespace-nowrap">
               + New App
             </button>
-            <button
-              onClick={toggleTheme}
-              className="p-1.5 rounded-md bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-              title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {dark ? (
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+
+            {/* Hamburger menu */}
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setMenuOpen(!menuOpen)}
+                className="p-1.5 rounded-md bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                title="Menu"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+              </button>
+
+              {menuOpen && (
+                <div className="absolute top-full right-0 mt-1 w-64 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
+                  {/* User info */}
+                  {session && (
+                    <>
+                      <div className="px-3 py-2 border-b border-border">
+                        <div className="text-xs text-muted-foreground">{session.email}</div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Workspace picker */}
+                  {orgs.length > 0 && (
+                    <>
+                      <div className="px-3 pt-2 pb-1">
+                        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Workspace</div>
+                      </div>
+                      {orgs.map(org => (
+                        <button
+                          key={org.id}
+                          onClick={() => {
+                            setSelectedOrgId(org.id)
+                            setMenuOpen(false)
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2 ${
+                            org.id === selectedOrgId
+                              ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400'
+                              : 'text-foreground hover:bg-muted'
+                          }`}
+                        >
+                          <span className={`w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                            org.id === selectedOrgId
+                              ? 'bg-primary-600 text-white'
+                              : 'bg-muted-foreground/20 text-muted-foreground'
+                          }`}>
+                            {(org.name || '?')[0].toUpperCase()}
+                          </span>
+                          <span className="truncate">{formatOrgName(org)}</span>
+                          {org.id === selectedOrgId && (
+                            <svg className="ml-auto flex-shrink-0" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                          )}
+                        </button>
+                      ))}
+                      <div className="border-b border-border my-1" />
+                    </>
+                  )}
+
+                  {/* Theme toggle */}
+                  <button
+                    onClick={() => { toggleTheme(); setMenuOpen(false) }}
+                    className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors flex items-center gap-2"
+                  >
+                    {dark ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                    )}
+                    {dark ? 'Light mode' : 'Dark mode'}
+                  </button>
+                </div>
               )}
-            </button>
-            {session && (
-              <span className="text-xs text-muted-foreground whitespace-nowrap hidden sm:inline">{session.email}</span>
-            )}
+            </div>
           </div>
         </div>
       </header>

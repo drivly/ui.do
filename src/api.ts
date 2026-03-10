@@ -48,11 +48,24 @@ export async function fetchSession(): Promise<Session | null> {
   }
 }
 
+export interface Organization {
+  id: string
+  name: string
+  slug?: string
+}
+
+export async function fetchOrganizations(): Promise<Organization[]> {
+  const res = await apiFetch('/graphdl/raw/organizations?depth=0&pagination=false')
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.docs || []
+}
+
 export interface AppRecord {
   id: string
   name: string
   slug: string
-  tenant?: string
+  organization?: string | Organization
   visibility?: string
   description?: string
   domains?: string[] | Domain[]
@@ -72,7 +85,7 @@ export interface Domain {
   domainSlug?: string
   title?: string
   name?: string
-  tenant?: string
+  organization?: string | Organization
 }
 
 export async function fetchDomains(): Promise<Domain[]> {

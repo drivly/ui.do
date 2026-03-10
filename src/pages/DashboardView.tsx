@@ -4,6 +4,9 @@ import { fetchLayers, fetchDashboardNoun, fetchDashboardPrefs, writeDashboardPre
 import { nounDisplayName, formatDomainLabel } from '../utils'
 import { LayerRenderer } from '../components/LayerRenderer'
 import type { ILayer, INavigationLayer } from '../types'
+import { parseDashboardConfig, serializeSection, serializeWidget, SectionRenderer, WidgetPicker } from '../dashboard'
+import type { DashboardConfig, WidgetType } from '../dashboard'
+import { defaultRegistry } from '../components/converter'
 
 type View = { type: 'dashboard' } | { type: 'entity'; noun: string } | { type: 'schema' } | { type: 'uod' } | { type: 'build' }
 
@@ -63,6 +66,9 @@ export function DashboardView({ domain, nouns, isAdmin, onNavigate }: Props) {
   const [dashboardNoun, setDashboardNoun] = useState<Noun | null>(null)
   const [prefs, setPrefs] = useState<Resource[]>([])
   const [editing, setEditing] = useState(false)
+  const [layers, setLayers] = useState<Record<string, ILayer>>({})
+  const [dashboardConfig, setDashboardConfig] = useState<DashboardConfig | null>(null)
+  const [pickingWidgetForSection, setPickingWidgetForSection] = useState<string | null>(null)
 
   const domainSlug = domain.domainSlug || domain.slug || domain.name || ''
 
@@ -71,8 +77,9 @@ export function DashboardView({ domain, nouns, isAdmin, onNavigate }: Props) {
     setIndexLayer(null)
     setLayerError(false)
     fetchLayers(domainSlug)
-      .then(layers => {
-        if (layers.index) setIndexLayer(layers.index as ILayer)
+      .then(fetchedLayers => {
+        setLayers(fetchedLayers as Record<string, ILayer>)
+        if (fetchedLayers.index) setIndexLayer(fetchedLayers.index as ILayer)
         else setLayerError(true)
       })
       .catch(() => setLayerError(true))
@@ -89,6 +96,16 @@ export function DashboardView({ domain, nouns, isAdmin, onNavigate }: Props) {
     })
   }, [domain.id])
 
+  useEffect(() => {
+    if (prefs.length === 0) { setDashboardConfig(null); return }
+    const configFacts = prefs.filter(p => {
+      const v = p.value || ''
+      return v.startsWith('section ') || v.startsWith('widget ') || v.startsWith('targets ')
+    })
+    if (configFacts.length > 0) setDashboardConfig(parseDashboardConfig(configFacts))
+    else setDashboardConfig(null)
+  }, [prefs])
+
   const togglePref = useCallback(async (action: 'pins' | 'hides', nounName: string) => {
     if (!dashboardNoun) return
     const value = `${action} ${nounName}`
@@ -101,6 +118,50 @@ export function DashboardView({ domain, nouns, isAdmin, onNavigate }: Props) {
       setPrefs(prev => [...prev, created])
     }
   }, [dashboardNoun, prefs, domain.id])
+
+  const handleAddSection = useCallback(async (title: string) => {
+    if (!dashboardNoun) return
+    const position = dashboardConfig ? dashboardConfig.sections.length : 0
+    const value = serializeSection(title, position, 3)
+    const created = await writeDashboardPref(domain.id, dashboardNoun.id, value)
+    setPrefs(prev => [...prev, created])
+  }, [dashboardNoun, dashboardConfig, domain.id])
+
+  const handleDeleteSection = useCallback(async (sectionId: string) => {
+    const sectionPref = prefs.find(p => p.id === sectionId)
+    if (!sectionPref) return
+    const sectionTitle = (sectionPref.value || '').match(/^section\s+(.+?)\s+at/)?.[1]
+    const widgetPrefs = prefs.filter(p => {
+      const v = p.value || ''
+      return v.startsWith('widget ') && v.includes(` in ${sectionTitle} at `)
+    })
+    await Promise.all([
+      deleteDashboardPref(sectionId),
+      ...widgetPrefs.map(w => deleteDashboardPref(w.id)),
+    ])
+    setPrefs(prev => prev.filter(p => p.id !== sectionId && !widgetPrefs.some(w => w.id === p.id)))
+  }, [prefs])
+
+  const handleAddWidget = useCallback(async (
+    sectionTitle: string,
+    widgetType: WidgetType,
+    entity: string,
+    field?: string,
+    layer?: string,
+  ) => {
+    if (!dashboardNoun) return
+    const section = dashboardConfig?.sections.find(s => s.title === sectionTitle)
+    const position = section ? section.widgets.length : 0
+    const value = serializeWidget(widgetType, entity, sectionTitle, position, field, layer)
+    const created = await writeDashboardPref(domain.id, dashboardNoun.id, value)
+    setPrefs(prev => [...prev, created])
+    setPickingWidgetForSection(null)
+  }, [dashboardNoun, dashboardConfig, domain.id])
+
+  const handleDeleteWidget = useCallback(async (widgetId: string) => {
+    await deleteDashboardPref(widgetId)
+    setPrefs(prev => prev.filter(p => p.id !== widgetId))
+  }, [])
 
   const isPinned = (name: string) => prefs.some(p => p.value === `pins ${name}`)
   const isHidden = (name: string) => prefs.some(p => p.value === `hides ${name}`)
@@ -142,34 +203,94 @@ export function DashboardView({ domain, nouns, isAdmin, onNavigate }: Props) {
         </div>
 
         {editing ? (
-          // Edit mode: show all entities with pin/hide controls
-          <div className="space-y-2">
-            {nouns.map(n => (
-              <div key={n.id}
-                className={`bg-card border rounded-lg p-4 flex items-center justify-between transition-all ${
-                  isHidden(n.name) ? 'border-border opacity-50' : 'border-border'
-                }`}>
-                <div className="flex items-center gap-3">
+          <div className="space-y-4">
+            {/* Legacy pin/hide controls */}
+            <div className="space-y-2">
+              {nouns.map(n => (
+                <div key={n.id}
+                  className={`bg-card border rounded-lg p-4 flex items-center justify-between transition-all ${
+                    isHidden(n.name) ? 'border-border opacity-50' : 'border-border'
+                  }`}>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => togglePref('pins', n.name)}
+                      className={`text-sm ${isPinned(n.name) ? 'text-amber-500' : 'text-muted-foreground hover:text-amber-500'}`}
+                      title={isPinned(n.name) ? 'Unpin' : 'Pin to top'}>
+                      {isPinned(n.name) ? '\u2605' : '\u2606'}
+                    </button>
+                    <span className="text-sm font-medium text-card-foreground">{nounDisplayName(n)}</span>
+                  </div>
                   <button
-                    onClick={() => togglePref('pins', n.name)}
-                    className={`text-sm ${isPinned(n.name) ? 'text-amber-500' : 'text-muted-foreground hover:text-amber-500'}`}
-                    title={isPinned(n.name) ? 'Unpin' : 'Pin to top'}>
-                    {isPinned(n.name) ? '\u2605' : '\u2606'}
+                    onClick={() => togglePref('hides', n.name)}
+                    className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                    title={isHidden(n.name) ? 'Show' : 'Hide'}>
+                    {isHidden(n.name) ? 'Show' : 'Hide'}
                   </button>
-                  <span className="text-sm font-medium text-card-foreground">{nounDisplayName(n)}</span>
                 </div>
-                <button
-                  onClick={() => togglePref('hides', n.name)}
-                  className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-                  title={isHidden(n.name) ? 'Show' : 'Hide'}>
-                  {isHidden(n.name) ? 'Show' : 'Hide'}
-                </button>
-              </div>
-            ))}
+              ))}
+            </div>
+
+            {/* Section management */}
+            <div className="border-t border-border pt-4">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Dashboard Sections</h3>
+              {dashboardConfig?.sections.map(section => (
+                <div key={section.id} className="bg-card border border-border rounded-lg p-3 mb-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-card-foreground">{section.title}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">{section.widgets.length} widget{section.widgets.length !== 1 ? 's' : ''}</span>
+                      <button onClick={() => handleDeleteSection(section.id)} className="text-xs text-muted-foreground hover:text-destructive transition-colors">Delete</button>
+                    </div>
+                  </div>
+                  {section.widgets.map(w => (
+                    <div key={w.id} className="flex items-center justify-between bg-background rounded px-2 py-1 mb-1 text-xs">
+                      <span className="text-card-foreground">{w.widgetType}: {w.entity}{w.field ? `.${w.field}` : ''}</span>
+                      <button onClick={() => handleDeleteWidget(w.id)} className="text-muted-foreground hover:text-destructive">x</button>
+                    </div>
+                  ))}
+                  {pickingWidgetForSection === section.title ? (
+                    <WidgetPicker
+                      nouns={nouns}
+                      layers={layers}
+                      onSelect={(type, entity, field, layer) => handleAddWidget(section.title, type, entity, field, layer)}
+                      onCancel={() => setPickingWidgetForSection(null)}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setPickingWidgetForSection(section.title)}
+                      className="w-full bg-background border border-dashed border-border rounded px-2 py-1 text-xs text-muted-foreground hover:border-primary-300 dark:hover:border-primary-700 transition-all mt-1"
+                    >
+                      + Add Widget
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                onClick={() => {
+                  const title = prompt('Section title:')
+                  if (title) handleAddSection(title)
+                }}
+                className="w-full bg-card border border-dashed border-border rounded-lg p-3 text-sm text-muted-foreground hover:border-primary-300 dark:hover:border-primary-700 transition-all"
+              >
+                + Add Section
+              </button>
+            </div>
           </div>
         ) : (
           <>
-            <LayerRenderer layer={displayLayer} onNavigate={handleLayerNavigate} />
+            {dashboardConfig && dashboardConfig.sections.length > 0 ? (
+              dashboardConfig.sections.map(section => (
+                <SectionRenderer
+                  key={section.id}
+                  section={section}
+                  layers={layers}
+                  registry={defaultRegistry}
+                  onNavigate={handleLayerNavigate}
+                />
+              ))
+            ) : (
+              <LayerRenderer layer={displayLayer} onNavigate={handleLayerNavigate} />
+            )}
             <button
               onClick={() => onNavigate({ type: 'schema' })}
               className="mt-3 w-full bg-card border border-dashed border-border rounded-lg p-4 text-left hover:border-primary-300 dark:hover:border-primary-700 transition-all">
