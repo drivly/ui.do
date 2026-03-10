@@ -182,10 +182,14 @@ export async function fetchLayers(domain?: string): Promise<Record<string, any>>
   if (!res.ok) throw new Error(`Failed to fetch layers: ${res.status}`)
   const data = await res.json()
   const gen = data.docs?.[0]
-  if (!gen?.output?.files) throw new Error('No ilayer generator found')
+  if (!gen?.output) throw new Error('No ilayer generator found')
+
+  // output may be a JSON string (graphdl-orm SQLite) or a parsed object (Payload)
+  const output = typeof gen.output === 'string' ? JSON.parse(gen.output) : gen.output
+  if (!output?.files) throw new Error('No ilayer generator found')
 
   const layers: Record<string, any> = {}
-  for (const [key, value] of Object.entries(gen.output.files)) {
+  for (const [key, value] of Object.entries(output.files)) {
     if (key.startsWith('layers/') && key.endsWith('.json')) {
       const name = key.replace('layers/', '').replace('.json', '')
       layers[name] = typeof value === 'string' ? JSON.parse(value) : value
