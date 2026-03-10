@@ -1,25 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { fetchLayers, sendStateEvent, type Domain } from '../api'
-import { formatNounName } from '../utils'
+import { formatNounName, parseStateAddress } from '../utils'
 import { LayerRenderer } from '../components/LayerRenderer'
 import type { ILayer, IActionButton } from '../types'
 
 interface Props {
   domain: Domain
   entityName: string
-}
-
-/**
- * Parse a state machine address like /state/{machineType}/{instanceId}/{event}
- * Returns null if the address doesn't match the pattern.
- */
-function parseStateAddress(address: string): { machineType: string; instanceId: string; event: string } | null {
-  const path = address.replace(/^\//, '')
-  if (!path.startsWith('state/')) return null
-  const segments = path.split('/')
-  // state / machineType / instanceId / event
-  if (segments.length !== 4) return null
-  return { machineType: segments[1], instanceId: segments[2], event: segments[3] }
 }
 
 /**

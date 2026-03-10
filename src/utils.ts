@@ -1,3 +1,15 @@
+/**
+ * Parse a state machine address like /state/{machineType}/{instanceId}/{event}
+ * Returns null if the address doesn't match the pattern.
+ */
+export function parseStateAddress(address: string): { machineType: string; instanceId: string; event: string } | null {
+  const path = address.replace(/^\//, '')
+  if (!path.startsWith('state/')) return null
+  const segments = path.split('/')
+  if (segments.length !== 4) return null
+  return { machineType: segments[1], instanceId: segments[2], event: segments[3] }
+}
+
 /** Format a noun name for display: split camelCase and capitalize */
 export function formatNounName(name: string): string {
   if (!name) return ''

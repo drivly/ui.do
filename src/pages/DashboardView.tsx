@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { Domain, Noun, Resource } from '../api'
-import { fetchLayers, fetchDashboardNoun, fetchDashboardPrefs, writeDashboardPref, deleteDashboardPref } from '../api'
-import { nounDisplayName, formatDomainLabel } from '../utils'
+import { fetchLayers, fetchDashboardNoun, fetchDashboardPrefs, writeDashboardPref, deleteDashboardPref, sendStateEvent } from '../api'
+import { nounDisplayName, formatDomainLabel, parseStateAddress } from '../utils'
 import { LayerRenderer } from '../components/LayerRenderer'
-import type { ILayer, INavigationLayer } from '../types'
+import type { ILayer, INavigationLayer, IActionButton } from '../types'
 import { parseDashboardConfig, serializeSection, serializeWidget, SectionRenderer, WidgetPicker } from '../dashboard'
 import type { DashboardConfig, WidgetType } from '../dashboard'
 import { defaultRegistry } from '../components/converter'
@@ -177,6 +177,24 @@ export function DashboardView({ domain, nouns, isAdmin, onNavigate }: Props) {
     if (noun) onNavigate({ type: 'entity', noun: noun.name })
   }
 
+  // Handle action buttons — dispatch state machine events or navigate
+  const handleAction = useCallback((btn: IActionButton) => {
+    const address = btn.address || btn.link?.address
+    if (address) {
+      const stateInfo = parseStateAddress(address)
+      if (stateInfo) {
+        sendStateEvent(stateInfo.machineType, stateInfo.instanceId, stateInfo.event)
+          .then(() => {
+            // Refresh layers after state change
+            if (domainSlug) fetchLayers(domainSlug).then(l => setLayers(l as Record<string, ILayer>))
+          })
+          .catch(e => console.error('State event failed:', e))
+        return
+      }
+      handleLayerNavigate(address)
+    }
+  }, [domainSlug, handleLayerNavigate])
+
   // Render generated index layer with user preferences applied
   if (indexLayer && !layerError && indexLayer.type === 'layer') {
     const displayLayer = applyPrefs(indexLayer as INavigationLayer, prefs)
@@ -286,6 +304,7 @@ export function DashboardView({ domain, nouns, isAdmin, onNavigate }: Props) {
                   layers={layers}
                   registry={defaultRegistry}
                   onNavigate={handleLayerNavigate}
+                  onAction={handleAction}
                 />
               ))
             ) : (

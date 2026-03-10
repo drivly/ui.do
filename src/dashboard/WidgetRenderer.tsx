@@ -1,13 +1,15 @@
 import type { DashboardWidget } from './types.ts'
-import type { ILayer, ILayerField, IFormLayer, INavigationLayer, ConverterRegistry } from '../types.ts'
+import type { ILayer, ILayerField, IFormLayer, INavigationLayer, IActionButton, ConverterRegistry } from '../types.ts'
 import { resolveControl } from '../components/converter.ts'
 import { NavigationProvider } from '../components/NavigationContext.tsx'
+import { ActionButton } from '../components/ActionButton.tsx'
 
 interface Props {
   widget: DashboardWidget
   layers: Record<string, ILayer>
   registry: ConverterRegistry
   onNavigate?: (address: string) => void
+  onAction?: (btn: IActionButton) => void
 }
 
 /**
@@ -109,8 +111,34 @@ function resolveWidgetField(widget: DashboardWidget, layers: Record<string, ILay
   return null
 }
 
-export function WidgetRenderer({ widget, layers, registry, onNavigate }: Props) {
+export function WidgetRenderer({ widget, layers, registry, onNavigate, onAction }: Props) {
   const handleNavigate = onNavigate ?? (() => {})
+
+  // --- Remote-control widget: render state machine action buttons from entity detail layer ---
+  if (widget.widgetType === 'remote-control') {
+    const entityLower = widget.entity.toLowerCase()
+    const detailKey = Object.keys(layers).find(k => k.toLowerCase().startsWith(entityLower) && k.includes('detail'))
+    const listKey = Object.keys(layers).find(k => k.toLowerCase().startsWith(entityLower) && !k.includes('detail') && !k.includes('new') && !k.includes('edit'))
+    const layer = detailKey ? layers[detailKey] : listKey ? layers[listKey] : undefined
+    const actionButtons = (layer as INavigationLayer)?.actionButtons || (layer as IFormLayer)?.actionButtons || []
+
+    return (
+      <NavigationProvider value={handleNavigate}>
+        <div className="bg-card border border-border rounded-xl p-4">
+          <div className="text-xs font-medium text-muted-foreground mb-2">{widget.entity} Controls</div>
+          {actionButtons.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {actionButtons.map(btn => (
+                <ActionButton key={btn.id} button={btn} onAction={onAction ?? (() => {})} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">No actions available</div>
+          )}
+        </div>
+      </NavigationProvider>
+    )
+  }
 
   // --- Streaming widget: render ChatStreamControl ---
   if (widget.widgetType === 'streaming') {

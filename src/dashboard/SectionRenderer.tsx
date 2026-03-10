@@ -1,5 +1,5 @@
 import type { DashboardSection } from './types.ts'
-import type { ILayer, ConverterRegistry } from '../types.ts'
+import type { ILayer, IActionButton, ConverterRegistry } from '../types.ts'
 import { WidgetRenderer } from './WidgetRenderer.tsx'
 
 interface Props {
@@ -7,6 +7,7 @@ interface Props {
   layers: Record<string, ILayer>
   registry: ConverterRegistry
   onNavigate?: (address: string) => void
+  onAction?: (btn: IActionButton) => void
 }
 
 const GRID_COLS: Record<number, string> = {
@@ -16,7 +17,7 @@ const GRID_COLS: Record<number, string> = {
   4: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4',
 }
 
-export function SectionRenderer({ section, layers, registry, onNavigate }: Props) {
+export function SectionRenderer({ section, layers, registry, onNavigate, onAction }: Props) {
   const gridClass = GRID_COLS[section.columnCount] || GRID_COLS[3]
 
   return (
@@ -32,6 +33,7 @@ export function SectionRenderer({ section, layers, registry, onNavigate }: Props
             layers={layers}
             registry={registry}
             onNavigate={onNavigate}
+            onAction={onAction}
           />
         ))}
       </div>
