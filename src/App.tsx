@@ -76,10 +76,10 @@ function formatOrgName(org: Organization): string {
 function AppContent() {
   const { session, isAdmin, loading: sessionLoading } = useSession()
   const { apps, loading: appsLoading, error: appsError, refresh: refreshApps } = useApps()
-  const { orgs, loading: orgsLoading } = useOrganizations()
+  const { orgs } = useOrganizations()
   const { dark, toggle: toggleTheme } = useTheme()
 
-  const { layout, navigate: paneNavigate, goBack, closePopover } = usePaneNavigation()
+  const { layout, closePopover } = usePaneNavigation()
 
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null)
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
@@ -445,7 +445,7 @@ function AppContent() {
       <PaneLayout
         layout={{
           ...layout,
-          detail: { ...layout.detail, current: selectedDomain ? view.type : null },
+          detail: { ...layout.detail, current: (selectedDomain || (!selectedDomainId && selectedApp && appDomains.length > 1)) ? view.type : null },
         }}
         renderMaster={() => (
           <>
