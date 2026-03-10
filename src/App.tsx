@@ -268,20 +268,18 @@ function AppContent() {
   return (
     <div className="flex flex-col h-dvh bg-background overflow-hidden">
       {/* Header */}
-      <header className="bg-card border-b border-border px-4 py-3 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <span className="font-display font-bold text-base tracking-tight flex-shrink-0 text-foreground">ui.do</span>
-
+      <header className="bg-card border-b border-border px-4 py-2 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <div className="flex items-center gap-2 flex-shrink-0">
             {appsLoading ? (
-              <span className="text-sm text-muted-foreground">Loading...</span>
+              <span className="text-sm text-muted-foreground font-display font-bold">ui.do</span>
             ) : appsError === 'Unauthorized' ? (
-              <button onClick={redirectToLogin} className="text-sm text-primary-400 hover:text-primary-300 transition-colors">Sign in</button>
+              <button onClick={redirectToLogin} className="text-sm text-primary-400 hover:text-primary-300 transition-colors font-display font-bold">ui.do — Sign in</button>
             ) : appsError ? (
               <span className="text-sm text-destructive">{appsError}</span>
             ) : (
               <>
-                {/* App dropdown */}
+                {/* App dropdown with logo */}
                 <div className="relative" ref={dropdownRef}>
                   <button
                     onClick={() => setAppDropdownOpen(!appDropdownOpen)}
@@ -291,6 +289,7 @@ function AppContent() {
                         : 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                     }`}
                   >
+                    <span className="font-display font-bold opacity-70">ui.do</span>
                     {selectedApp ? formatAppLabel(selectedApp) : 'Select App'}
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                   </button>
@@ -414,36 +413,35 @@ function AppContent() {
             )}
           </div>
 
-        </div>
-
-        {/* Domain tabs — own row, wrapping */}
-        {selectedApp && appDomains.length > 1 && (
-          <div className="flex flex-wrap items-center gap-1 mt-2">
-            <button
-              onClick={() => { setSelectedDomainId(null); setView({ type: 'dashboard' }) }}
-              className={`px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap ${
-                !selectedDomainId
-                  ? 'bg-muted text-foreground font-medium'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-              }`}
-            >
-              All
-            </button>
-            {appDomains.map(d => (
+          {/* Domain tabs — inline, wrapping with header */}
+          {selectedApp && appDomains.length > 1 && (
+            <>
               <button
-                key={d.id}
-                onClick={() => handleSelectDomain(d.id)}
+                onClick={() => { setSelectedDomainId(null); setView({ type: 'dashboard' }) }}
                 className={`px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap ${
-                  d.id === selectedDomain?.id
+                  !selectedDomainId
                     ? 'bg-muted text-foreground font-medium'
                     : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                 }`}
               >
-                {formatDomainLabel(d)}
+                All
               </button>
-            ))}
-          </div>
-        )}
+              {appDomains.map(d => (
+                <button
+                  key={d.id}
+                  onClick={() => handleSelectDomain(d.id)}
+                  className={`px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap ${
+                    d.id === selectedDomain?.id
+                      ? 'bg-muted text-foreground font-medium'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  }`}
+                >
+                  {formatDomainLabel(d)}
+                </button>
+              ))}
+            </>
+          )}
+        </div>
       </header>
 
       <PaneLayout
