@@ -272,7 +272,7 @@ function AppContent() {
         <div className="flex items-center gap-3">
           <span className="font-display font-bold text-base tracking-tight flex-shrink-0 text-foreground">ui.do</span>
 
-          <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {appsLoading ? (
               <span className="text-sm text-muted-foreground">Loading...</span>
             ) : appsError === 'Unauthorized' ? (
@@ -327,118 +327,121 @@ function AppContent() {
                   )}
                 </div>
 
-                {/* Domain tabs within selected app */}
-                {selectedApp && appDomains.length > 1 && (
-                  <div className="flex items-center gap-1 border-l border-border pl-2 ml-1">
-                    <button
-                      onClick={() => { setSelectedDomainId(null); setView({ type: 'dashboard' }) }}
-                      className={`px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap ${
-                        !selectedDomainId
-                          ? 'bg-muted text-foreground font-medium'
-                          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                      }`}
-                    >
-                      All
-                    </button>
-                    {appDomains.map(d => (
+                {/* Hamburger menu — next to app picker */}
+                <div className="relative" ref={menuRef}>
+                  <button
+                    onClick={() => setMenuOpen(!menuOpen)}
+                    className="p-1.5 rounded-md bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                    title="Menu"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+                  </button>
+
+                  {menuOpen && (
+                    <div className="absolute top-full left-0 mt-1 w-64 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
+                      {/* User info */}
+                      {session && (
+                        <>
+                          <div className="px-3 py-2 border-b border-border">
+                            <div className="text-xs text-muted-foreground">{session.email}</div>
+                          </div>
+                        </>
+                      )}
+
+                      {/* New App */}
                       <button
-                        key={d.id}
-                        onClick={() => handleSelectDomain(d.id)}
-                        className={`px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap ${
-                          d.id === selectedDomain?.id
-                            ? 'bg-muted text-foreground font-medium'
-                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                        }`}
+                        onClick={() => { setView({ type: 'build' }); setMenuOpen(false) }}
+                        className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors flex items-center gap-2"
                       >
-                        {formatDomainLabel(d)}
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                        New App
                       </button>
-                    ))}
-                  </div>
-                )}
+
+                      {/* Workspace picker */}
+                      {orgs.length > 0 && (
+                        <>
+                          <div className="border-b border-border my-1" />
+                          <div className="px-3 pt-2 pb-1">
+                            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Workspace</div>
+                          </div>
+                          {orgs.map(org => (
+                            <button
+                              key={org.id}
+                              onClick={() => {
+                                setSelectedOrgId(org.id)
+                                setMenuOpen(false)
+                              }}
+                              className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2 ${
+                                org.id === selectedOrgId
+                                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400'
+                                  : 'text-foreground hover:bg-muted'
+                              }`}
+                            >
+                              <span className={`w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                                org.id === selectedOrgId
+                                  ? 'bg-primary-600 text-white'
+                                  : 'bg-muted-foreground/20 text-muted-foreground'
+                              }`}>
+                                {(org.name || '?')[0].toUpperCase()}
+                              </span>
+                              <span className="truncate">{formatOrgName(org)}</span>
+                              {org.id === selectedOrgId && (
+                                <svg className="ml-auto flex-shrink-0" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                              )}
+                            </button>
+                          ))}
+                        </>
+                      )}
+
+                      <div className="border-b border-border my-1" />
+
+                      {/* Theme toggle */}
+                      <button
+                        onClick={() => { toggleTheme(); setMenuOpen(false) }}
+                        className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors flex items-center gap-2"
+                      >
+                        {dark ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                        )}
+                        {dark ? 'Light mode' : 'Dark mode'}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={() => setView({ type: 'build' })}
-              className="px-3 py-1 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors whitespace-nowrap">
-              + New App
-            </button>
-
-            {/* Hamburger menu */}
-            <div className="relative" ref={menuRef}>
+          {/* Domain tabs — scrollable */}
+          {selectedApp && appDomains.length > 1 && (
+            <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0 hide-scrollbar">
               <button
-                onClick={() => setMenuOpen(!menuOpen)}
-                className="p-1.5 rounded-md bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                title="Menu"
+                onClick={() => { setSelectedDomainId(null); setView({ type: 'dashboard' }) }}
+                className={`px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap flex-shrink-0 ${
+                  !selectedDomainId
+                    ? 'bg-muted text-foreground font-medium'
+                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                }`}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+                All
               </button>
-
-              {menuOpen && (
-                <div className="absolute top-full right-0 mt-1 w-64 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
-                  {/* User info */}
-                  {session && (
-                    <>
-                      <div className="px-3 py-2 border-b border-border">
-                        <div className="text-xs text-muted-foreground">{session.email}</div>
-                      </div>
-                    </>
-                  )}
-
-                  {/* Workspace picker */}
-                  {orgs.length > 0 && (
-                    <>
-                      <div className="px-3 pt-2 pb-1">
-                        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Workspace</div>
-                      </div>
-                      {orgs.map(org => (
-                        <button
-                          key={org.id}
-                          onClick={() => {
-                            setSelectedOrgId(org.id)
-                            setMenuOpen(false)
-                          }}
-                          className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2 ${
-                            org.id === selectedOrgId
-                              ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400'
-                              : 'text-foreground hover:bg-muted'
-                          }`}
-                        >
-                          <span className={`w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                            org.id === selectedOrgId
-                              ? 'bg-primary-600 text-white'
-                              : 'bg-muted-foreground/20 text-muted-foreground'
-                          }`}>
-                            {(org.name || '?')[0].toUpperCase()}
-                          </span>
-                          <span className="truncate">{formatOrgName(org)}</span>
-                          {org.id === selectedOrgId && (
-                            <svg className="ml-auto flex-shrink-0" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                          )}
-                        </button>
-                      ))}
-                      <div className="border-b border-border my-1" />
-                    </>
-                  )}
-
-                  {/* Theme toggle */}
-                  <button
-                    onClick={() => { toggleTheme(); setMenuOpen(false) }}
-                    className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors flex items-center gap-2"
-                  >
-                    {dark ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
-                    )}
-                    {dark ? 'Light mode' : 'Dark mode'}
-                  </button>
-                </div>
-              )}
+              {appDomains.map(d => (
+                <button
+                  key={d.id}
+                  onClick={() => handleSelectDomain(d.id)}
+                  className={`px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap flex-shrink-0 ${
+                    d.id === selectedDomain?.id
+                      ? 'bg-muted text-foreground font-medium'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  }`}
+                >
+                  {formatDomainLabel(d)}
+                </button>
+              ))}
             </div>
-          </div>
+          )}
         </div>
       </header>
 
@@ -447,6 +450,7 @@ function AppContent() {
           ...layout,
           detail: { ...layout.detail, current: (selectedDomain || (!selectedDomainId && selectedApp && appDomains.length > 1)) ? view.type : null },
         }}
+        hideMaster={!selectedDomain}
         renderMaster={() => (
           <>
             {selectedDomain && view.type !== 'build' && view.type !== 'uod' && (

@@ -3,6 +3,7 @@ import type { LayoutState } from './types'
 
 interface PaneLayoutProps {
   layout: LayoutState
+  hideMaster?: boolean
   renderMaster: () => ReactNode
   renderDetail: () => ReactNode
   renderPopover?: () => ReactNode
@@ -11,6 +12,7 @@ interface PaneLayoutProps {
 
 export function PaneLayout({
   layout,
+  hideMaster,
   renderMaster,
   renderDetail,
   renderPopover,
@@ -22,12 +24,14 @@ export function PaneLayout({
   return (
     <div className="flex h-full overflow-hidden">
       {/* Master pane */}
-      <div className={`
-        ${hasDetail ? 'hidden md:flex' : 'flex'}
-        flex-col w-full md:w-80 lg:w-96 border-r border-border shrink-0
-      `}>
-        {renderMaster()}
-      </div>
+      {!hideMaster && (
+        <div className={`
+          ${hasDetail ? 'hidden md:flex' : 'flex'}
+          flex-col w-full md:w-80 lg:w-96 border-r border-border shrink-0
+        `}>
+          {renderMaster()}
+        </div>
+      )}
 
       {/* Detail pane */}
       {hasDetail && (
