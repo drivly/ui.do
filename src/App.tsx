@@ -425,7 +425,12 @@ function AppContent() {
         hideMaster={!selectedDomain}
         renderMaster={() => (
           <>
-            {selectedDomain && view.type !== 'build' && view.type !== 'uod' && (
+            {/* Chat apps: show SupportRequest entity list from iLayer readings */}
+            {selectedDomain && selectedApp?.chatEndpoint && (
+              <EntityListView domain={selectedDomain} entityName="SupportRequest" />
+            )}
+            {/* Non-chat apps: show noun navigation sidebar */}
+            {selectedDomain && !selectedApp?.chatEndpoint && view.type !== 'build' && view.type !== 'uod' && (
               <nav className="p-3 space-y-0.5 overflow-y-auto flex-1">
                 <button
                   onClick={() => setView({ type: 'dashboard' })}
@@ -475,7 +480,7 @@ function AppContent() {
             )}
             {view.type === 'dashboard' && !selectedDomainId && selectedApp && (appDomains.length > 1 || selectedApp.chatEndpoint) && (
               selectedApp.chatEndpoint
-                ? <ChatOverboardView appName={formatAppLabel(selectedApp)} endpoint={selectedApp.chatEndpoint} />
+                ? <ChatOverboardView appName={formatAppLabel(selectedApp)} appSlug={selectedApp.slug} endpoint={selectedApp.chatEndpoint} />
                 : <OverboardView
                     domains={appDomains}
                     appName={formatAppLabel(selectedApp)}

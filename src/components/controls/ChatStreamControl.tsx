@@ -8,7 +8,15 @@ interface ChatMessage {
   content: string
 }
 
-export function ChatStreamControl({ field }: { field: ILayerField }) {
+export interface ChatEmptyStateProps {
+  sendMessage: (text: string) => void
+}
+
+export function ChatStreamControl({ field, appSlug, emptyState }: {
+  field: ILayerField
+  appSlug?: string
+  emptyState?: React.ReactNode | ((props: ChatEmptyStateProps) => React.ReactNode)
+}) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -21,10 +29,10 @@ export function ChatStreamControl({ field }: { field: ILayerField }) {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingContent])
 
-  const send = useCallback(() => {
-    if (!input.trim() || streaming) return
+  const sendMessage = useCallback((text: string) => {
+    if (!text.trim() || streaming) return
 
-    const userMsg: ChatMessage = { role: 'user', content: input.trim() }
+    const userMsg: ChatMessage = { role: 'user', content: text.trim() }
     setMessages(prev => [...prev, userMsg])
     setInput('')
     setStreaming(true)
@@ -37,7 +45,7 @@ export function ChatStreamControl({ field }: { field: ILayerField }) {
 
     streamChat(
       endpoint,
-      { messages: allMessages },
+      { messages: allMessages, ...(appSlug && { appSlug }) },
       (chunk) => setStreamingContent(prev => prev + chunk),
       () => {
         setStreamingContent(prev => {
@@ -54,12 +62,17 @@ export function ChatStreamControl({ field }: { field: ILayerField }) {
         setStreamingContent('')
       },
     )
-  }, [input, streaming, messages, endpoint])
+  }, [streaming, messages, endpoint])
+
+  const send = useCallback(() => sendMessage(input), [input, sendMessage])
 
   return (
     <div className="flex flex-col h-full min-h-[400px]">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.length === 0 && !streaming && (
+          typeof emptyState === 'function' ? emptyState({ sendMessage }) : emptyState
+        )}
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[80%] rounded-2xl px-4 py-2 ${

@@ -90,7 +90,7 @@ export async function fetchApps(): Promise<AppRecord[]> {
     }
     // Convention: apps with "support" in slug get chat overboard with support tab only
     if (!app.chatEndpoint && app.slug?.includes('support')) {
-      app.chatEndpoint = '/ai/chat'
+      app.chatEndpoint = '/graphdl/chat'
       const supportDomain = (app.domains || []).find((d: any) =>
         typeof d === 'object' && d.domainSlug?.endsWith('-support')
       )
@@ -346,11 +346,20 @@ export async function streamChat(
       throw new Error(`Chat request failed: ${res.status}`)
     }
 
+    const contentType = res.headers.get('content-type') || ''
+    const isSSE = contentType.includes('text/event-stream')
+
+    if (!isSSE) {
+      // Non-streaming JSON response — extract content directly
+      const data = await res.json()
+      if (data.content) onChunk(typeof data.content === 'string' ? data.content : JSON.stringify(data.content))
+      onDone(data)
+      return
+    }
+
     const reader = res.body?.getReader()
     if (!reader) {
-      // Non-streaming fallback: parse full JSON response
-      const data = await res.json()
-      onDone(data)
+      onDone({})
       return
     }
 
