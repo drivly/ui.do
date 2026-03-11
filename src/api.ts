@@ -296,6 +296,57 @@ export async function updateDashboardFact(id: string, value: string): Promise<Re
   return data.doc
 }
 
+/** Fetch resource instances for an entity type, with state machine statuses */
+export async function fetchEntityInstances(domainId: string, nounName: string): Promise<{
+  resources: Array<{ id: string; reference?: string; value?: string; createdAt?: string }>
+  statuses: Map<string, string>
+}> {
+  // Find the noun by name
+  const nounParams = new URLSearchParams()
+  nounParams.set('where[domain][equals]', domainId)
+  nounParams.set('where[name][equals]', nounName)
+  nounParams.set('depth', '0')
+  nounParams.set('limit', '1')
+  const nounRes = await apiFetch(`/graphdl/raw/nouns?${nounParams}`)
+  if (!nounRes.ok) return { resources: [], statuses: new Map() }
+  const nounData = await nounRes.json()
+  const noun = nounData.docs?.[0]
+  if (!noun) return { resources: [], statuses: new Map() }
+
+  // Fetch resources and state machines in parallel
+  const resParams = new URLSearchParams()
+  resParams.set('where[noun][equals]', noun.id)
+  resParams.set('where[domain][equals]', domainId)
+  resParams.set('depth', '0')
+  resParams.set('pagination', 'false')
+  resParams.set('sort', '-createdAt')
+
+  const smParams = new URLSearchParams()
+  smParams.set('where[domain][equals]', domainId)
+  smParams.set('depth', '1')
+  smParams.set('pagination', 'false')
+
+  const [resResponse, smResponse] = await Promise.all([
+    apiFetch(`/graphdl/raw/resources?${resParams}`),
+    apiFetch(`/graphdl/raw/state-machines?${smParams}`),
+  ])
+
+  const resources = resResponse.ok ? (await resResponse.json()).docs || [] : []
+
+  const statuses = new Map<string, string>()
+  if (smResponse.ok) {
+    const smData = await smResponse.json()
+    for (const sm of smData.docs || []) {
+      const resourceId = typeof sm.resource === 'string' ? sm.resource : sm.resource?.id
+      const statusName = typeof sm.currentStatus === 'object' ? sm.currentStatus?.name
+        : typeof sm.stateMachineStatus === 'object' ? sm.stateMachineStatus?.name : ''
+      if (resourceId && statusName) statuses.set(resourceId, statusName)
+    }
+  }
+
+  return { resources, statuses }
+}
+
 export async function deleteApp(appId: string): Promise<void> {
   const res = await apiFetch(`/graphdl/raw/apps/${appId}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(`Failed to delete app: ${res.status}`)
@@ -314,6 +365,52 @@ export async function extractClaims(text: string): Promise<any> {
   return res.json()
 }
 
+/** Fetch messages for a support request (Message resources linked by reference) */
+export async function fetchRequestMessages(domainId: string, requestId: string): Promise<Array<{ role: string; content: string; timestamp?: string }>> {
+  // Find the Message noun
+  const nounParams = new URLSearchParams()
+  nounParams.set('where[domain][equals]', domainId)
+  nounParams.set('where[name][equals]', 'Message')
+  nounParams.set('depth', '0')
+  nounParams.set('limit', '1')
+  const nounRes = await apiFetch(`/graphdl/raw/nouns?${nounParams}`)
+  if (!nounRes.ok) return []
+  const nounData = await nounRes.json()
+  const noun = nounData.docs?.[0]
+  if (!noun) return []
+
+  // Fetch message resources linked to this request
+  const params = new URLSearchParams()
+  params.set('where[noun][equals]', noun.id)
+  params.set('where[domain][equals]', domainId)
+  params.set('where[reference][equals]', requestId)
+  params.set('depth', '0')
+  params.set('pagination', 'false')
+  params.set('sort', 'createdAt')
+  const res = await apiFetch(`/graphdl/raw/resources?${params}`)
+  if (!res.ok) return []
+  const data = await res.json()
+  return (data.docs || []).map((doc: any) => {
+    try {
+      const parsed = JSON.parse(doc.value)
+      if (parsed.role && parsed.content) return parsed
+      return null
+    } catch { return null }
+  }).filter(Boolean)
+}
+
+/** Create a new reading (constraint or fact) in a domain */
+export async function createReading(domainId: string, text: string): Promise<Reading> {
+  const res = await apiFetch('/graphdl/raw/readings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, domain: domainId }),
+  })
+  if (!res.ok) throw new Error(`Failed to create reading: ${res.status}`)
+  const data = await res.json()
+  return data.doc
+}
+
 export async function sendStateEvent(machineType: string, instanceId: string, event: string) {
   const res = await apiFetch(`/state/${machineType}/${instanceId}/${event}`, {
     method: 'POST',
@@ -321,6 +418,19 @@ export async function sendStateEvent(machineType: string, instanceId: string, ev
     body: JSON.stringify({}),
   })
   return res.json()
+}
+
+export async function fetchRequestState(machineType: string, instanceId: string): Promise<{
+  currentState?: string
+  availableEvents?: string[]
+} | null> {
+  try {
+    const res = await apiFetch(`/state/${machineType}/${instanceId}`)
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
 }
 
 /**

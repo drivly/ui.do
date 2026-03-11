@@ -13,6 +13,7 @@ import { OverboardView } from './pages/OverboardView'
 import { ChatOverboardView } from './pages/ChatOverboardView'
 import { nounDisplayName, formatDomainLabel } from './utils'
 import { PaneLayout, usePaneNavigation } from './layout'
+import { AutoDevLogo } from './components/AutoDevLogo'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null }
@@ -82,10 +83,15 @@ function AppContent() {
 
   const { layout, closePopover } = usePaneNavigation()
 
+  // On custom domains (e.g. chat.auto.dev), hide app picker, delete, workspace
+  const isCustomDomain = !['ui.auto.dev', 'localhost'].some(h => window.location.hostname.includes(h))
+
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null)
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
   const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null)
   const [view, setView] = useState<View>({ type: 'dashboard' })
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
+  const [listRefreshKey, setListRefreshKey] = useState(0)
   const [urlRestored, setUrlRestored] = useState(false)
   const [appDropdownOpen, setAppDropdownOpen] = useState(false)
   const [pendingAppSlug, setPendingAppSlug] = useState<string | null>(null)
@@ -146,13 +152,15 @@ function AppContent() {
         const domains = getAppDomains(app)
         // Find domain within app
         if (domainSlug) {
-          const domain = domains.find(d => (d.domainSlug || d.slug) === domainSlug)
+          const domain = domains.find(d => (d.domainSlug || d.slug || d.id) === domainSlug)
           if (domain) setSelectedDomainId(domain.id)
           else if (domains.length === 1) setSelectedDomainId(domains[0].id)
         } else if (domains.length === 1) {
           setSelectedDomainId(domains[0].id)
+        } else if (app.navigableDomains?.length === 1) {
+          // Auto-select when only 1 navigable domain (e.g., support chat apps)
+          setSelectedDomainId(app.navigableDomains[0])
         }
-        // Multi-domain apps with no domain slug → overboard (selectedDomainId stays null)
       }
     }
 
@@ -162,6 +170,9 @@ function AppContent() {
       const noun = params.get('noun')
       if (noun) setView({ type: 'entity', noun })
     }
+
+    const reqId = params.get('request')
+    if (reqId) setSelectedRequestId(reqId)
 
     setUrlRestored(true)
   }, [apps, orgs, urlRestored])
@@ -177,15 +188,16 @@ function AppContent() {
     if (selectedDomainId && selectedApp) {
       const domains = getAppDomains(selectedApp)
       const domain = domains.find(d => d.id === selectedDomainId)
-      if (domain && domains.length > 1) params.set('domain', domain.domainSlug || domain.slug || domain.id)
+      if (domain) params.set('domain', domain.domainSlug || domain.slug || domain.id)
     }
     if (view.type !== 'dashboard') params.set('view', view.type)
     if (view.type === 'entity') params.set('noun', (view as any).noun)
+    if (selectedRequestId) params.set('request', selectedRequestId)
 
     const search = params.toString()
     const url = search ? `?${search}` : window.location.pathname
     window.history.replaceState(null, '', url)
-  }, [apps, orgs, selectedOrgId, selectedAppId, selectedDomainId, view, urlRestored])
+  }, [apps, orgs, selectedOrgId, selectedAppId, selectedDomainId, view, selectedRequestId, urlRestored])
 
   const selectedApp = selectedAppId ? filteredApps.find(a => a.id === selectedAppId) || apps.find(a => a.id === selectedAppId) : undefined
   const appDomains = useMemo(() => selectedApp ? getAppDomains(selectedApp) : [], [selectedApp])
@@ -203,8 +215,8 @@ function AppContent() {
     if (app) {
       setSelectedAppId(app.id)
       const domains = getAppDomains(app)
-      // Multi-domain apps start on overboard ("All" tab), single-domain auto-selects
       if (domains.length === 1) setSelectedDomainId(domains[0].id)
+      else if (app.navigableDomains?.length === 1) setSelectedDomainId(app.navigableDomains[0])
       else setSelectedDomainId(null)
       setView({ type: 'dashboard' })
       setPendingAppSlug(null)
@@ -216,9 +228,11 @@ function AppContent() {
     if (view.type === 'build' || view.type === 'uod') return
     const currentInFiltered = selectedAppId && filteredApps.some(a => a.id === selectedAppId)
     if (!currentInFiltered && filteredApps.length > 0) {
-      setSelectedAppId(filteredApps[0].id)
-      const domains = getAppDomains(filteredApps[0])
+      const firstApp = filteredApps[0]
+      setSelectedAppId(firstApp.id)
+      const domains = getAppDomains(firstApp)
       if (domains.length === 1) setSelectedDomainId(domains[0].id)
+      else if (firstApp.navigableDomains?.length === 1) setSelectedDomainId(firstApp.navigableDomains[0])
       else setSelectedDomainId(null)
     } else if (!currentInFiltered && filteredApps.length === 0) {
       setSelectedAppId(null)
@@ -230,16 +244,24 @@ function AppContent() {
 
   const handleSelectApp = (appId: string) => {
     setSelectedAppId(appId)
+    setSelectedRequestId(null)
     setAppDropdownOpen(false)
     const app = apps.find(a => a.id === appId)
     const domains = app ? getAppDomains(app) : []
-    // Multi-domain apps start on overboard, single-domain auto-selects
-    setSelectedDomainId(domains.length === 1 ? domains[0].id : null)
+    // Auto-select: single domain, or single navigable domain (e.g., support chat apps)
+    if (domains.length === 1) {
+      setSelectedDomainId(domains[0].id)
+    } else if (app?.navigableDomains?.length === 1) {
+      setSelectedDomainId(app.navigableDomains[0])
+    } else {
+      setSelectedDomainId(null)
+    }
     setView({ type: 'dashboard' })
   }
 
   const handleSelectDomain = (domainId: string) => {
     setSelectedDomainId(domainId)
+    setSelectedRequestId(null)
     setView({ type: 'dashboard' })
   }
 
@@ -285,7 +307,10 @@ function AppContent() {
                     onClick={() => setAppDropdownOpen(!appDropdownOpen)}
                     className="px-3 py-1.5 text-sm rounded-md transition-colors flex items-center gap-1.5 bg-muted text-foreground hover:bg-accent hover:text-accent-foreground"
                   >
-                    <span className="font-display font-bold">ui.do</span>
+                    {isCustomDomain
+                      ? <AutoDevLogo className="h-5" />
+                      : <span className="font-display font-bold">ui.do</span>
+                    }
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                   </button>
 
@@ -305,7 +330,7 @@ function AppContent() {
                           {formatAppLabel(selectedApp)}
                         </button>
                       )}
-                      {filteredApps.filter(a => a.id !== selectedAppId).map(app => (
+                      {!isCustomDomain && filteredApps.filter(a => a.id !== selectedAppId).map(app => (
                         <button
                           key={app.id}
                           onClick={() => handleSelectApp(app.id)}
@@ -316,19 +341,21 @@ function AppContent() {
                         </button>
                       ))}
 
-                      <div className="border-b border-border my-1" />
+                      {!isCustomDomain && <div className="border-b border-border my-1" />}
 
                       {/* New App */}
-                      <button
-                        onClick={() => { setView({ type: 'build' }); setAppDropdownOpen(false) }}
-                        className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors flex items-center gap-2"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-                        New App
-                      </button>
+                      {!isCustomDomain && (
+                        <button
+                          onClick={() => { setView({ type: 'build' }); setAppDropdownOpen(false) }}
+                          className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors flex items-center gap-2"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                          New App
+                        </button>
+                      )}
 
                       {/* Delete current app */}
-                      {selectedApp && (
+                      {!isCustomDomain && selectedApp && (
                         <button
                           onClick={(e) => { handleDeleteApp(selectedAppId!, e); setAppDropdownOpen(false) }}
                           className="w-full text-left px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors flex items-center gap-2"
@@ -339,7 +366,7 @@ function AppContent() {
                       )}
 
                       {/* Workspace picker */}
-                      {orgs.length > 0 && (
+                      {!isCustomDomain && orgs.length > 0 && (
                         <>
                           <div className="border-b border-border my-1" />
                           <div className="px-3 pt-2 pb-1">
@@ -427,7 +454,7 @@ function AppContent() {
           <>
             {/* Chat apps: show SupportRequest entity list from iLayer readings */}
             {selectedDomain && selectedApp?.chatEndpoint && (
-              <EntityListView domain={selectedDomain} entityName="SupportRequest" />
+              <EntityListView domain={selectedDomain} entityName="SupportRequest" listOnly onSelect={setSelectedRequestId} selectedId={selectedRequestId} refreshKey={listRefreshKey} />
             )}
             {/* Non-chat apps: show noun navigation sidebar */}
             {selectedDomain && !selectedApp?.chatEndpoint && view.type !== 'build' && view.type !== 'uod' && (
@@ -463,7 +490,7 @@ function AppContent() {
           </>
         )}
         renderDetail={() => (
-          <main className={`flex-1 overflow-y-auto ${view.type === 'dashboard' && !selectedDomainId && selectedApp?.chatEndpoint ? '' : 'p-6'}`}>
+          <main className={`flex-1 overflow-y-auto ${view.type === 'dashboard' && selectedApp?.chatEndpoint ? '' : 'p-6'}`}>
             {!session && !appsLoading && apps.length === 0 && view.type !== 'build' && (
               <div className="text-center py-12">
                 <p className="text-muted-foreground mb-4">Sign in to view your apps</p>
@@ -480,7 +507,7 @@ function AppContent() {
             )}
             {view.type === 'dashboard' && !selectedDomainId && selectedApp && (appDomains.length > 1 || selectedApp.chatEndpoint) && (
               selectedApp.chatEndpoint
-                ? <ChatOverboardView appName={formatAppLabel(selectedApp)} appSlug={selectedApp.slug} endpoint={selectedApp.chatEndpoint} />
+                ? <ChatOverboardView appName={formatAppLabel(selectedApp)} appSlug={selectedApp.slug} endpoint={selectedApp.chatEndpoint} isAdmin={isAdmin} />
                 : <OverboardView
                     domains={appDomains}
                     appName={formatAppLabel(selectedApp)}
@@ -489,12 +516,14 @@ function AppContent() {
                   />
             )}
             {view.type === 'dashboard' && selectedDomain && (
-              <DashboardView domain={selectedDomain} nouns={nouns} isAdmin={isAdmin} onNavigate={setView} />
+              selectedApp?.chatEndpoint
+                ? <ChatOverboardView appName={formatAppLabel(selectedApp)} appSlug={selectedApp.slug} endpoint={selectedApp.chatEndpoint} requestId={selectedRequestId} domainId={selectedDomain.id} isAdmin={isAdmin} onSelectRequest={setSelectedRequestId} onStateChange={() => setListRefreshKey(k => k + 1)} />
+                : <DashboardView domain={selectedDomain} nouns={nouns} isAdmin={isAdmin} onNavigate={setView} />
             )}
-            {view.type === 'schema' && selectedDomain && (
+            {view.type === 'schema' && selectedDomain && !selectedApp?.chatEndpoint && (
               <SchemaView domain={selectedDomain} />
             )}
-            {view.type === 'entity' && selectedDomain && (
+            {view.type === 'entity' && selectedDomain && !selectedApp?.chatEndpoint && (
               <EntityListView domain={selectedDomain} entityName={(view as any).noun} />
             )}
           </main>

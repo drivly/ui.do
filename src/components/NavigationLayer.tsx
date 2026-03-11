@@ -14,9 +14,10 @@ interface Props {
   registry: ConverterRegistry
   onAction?: (btn: IActionButton) => void
   onNavigate?: (address: string) => void
+  selectedId?: string | null
 }
 
-export function NavigationLayer({ layer, registry: _registry, onAction, onNavigate }: Props) {
+export function NavigationLayer({ layer, registry: _registry, onAction, onNavigate, selectedId }: Props) {
   const [searchText, setSearchText] = useState(layer.searchBox?.text || '')
 
   // Filter items by search text if search box is present
@@ -42,7 +43,7 @@ export function NavigationLayer({ layer, registry: _registry, onAction, onNaviga
             placeholder={layer.searchBox.placeholder || 'Search...'}
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
-            className="w-full px-3 py-2 border border-input rounded-lg bg-background text-foreground focus:ring-2 focus:ring-ring focus:border-transparent text-sm"
+            className="w-full px-3 py-2 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
           />
         </div>
       )}
@@ -52,10 +53,18 @@ export function NavigationLayer({ layer, registry: _registry, onAction, onNaviga
           {list.header && (
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">{list.header}</h3>
           )}
-          {list.items.map((item, j) => (
+          {list.items.map((item, j) => {
+            const itemAddress = item.link?.address || item.address || ''
+            const itemId = itemAddress.split('/').pop()
+            const isSelected = selectedId && itemId === selectedId
+            return (
             <button key={j}
-              onClick={() => item.onClick ? item.onClick() : onNavigate?.(item.link?.address || item.address || '')}
-              className="block w-full text-left bg-card border border-border rounded-lg p-4 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-sm transition-all">
+              onClick={() => item.onClick ? item.onClick() : onNavigate?.(itemAddress)}
+              className={`block w-full text-left rounded-lg p-4 transition-all border ${
+                isSelected
+                  ? 'bg-primary-600/10 border-primary-500 ring-1 ring-primary-500 dark:bg-primary-400/10 dark:border-primary-400 dark:ring-primary-400'
+                  : 'bg-card border-border hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-sm'
+              }`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   {item.imagePath && (
@@ -75,7 +84,8 @@ export function NavigationLayer({ layer, registry: _registry, onAction, onNaviga
                 )}
               </div>
             </button>
-          ))}
+            )
+          })}
           {list.footer && (
             <p className="text-xs text-muted-foreground px-1">{list.footer}</p>
           )}

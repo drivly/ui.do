@@ -1,12 +1,20 @@
-import { useState, useEffect, useCallback } from 'react'
-import { fetchLayers, sendStateEvent, type Domain } from '../api'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { fetchLayers, fetchEntityInstances, sendStateEvent, type Domain } from '../api'
 import { formatNounName, parseStateAddress } from '../utils'
 import { LayerRenderer } from '../components/LayerRenderer'
-import type { ILayer, IActionButton } from '../types'
+import type { ILayer, INavigationLayer, IActionButton } from '../types'
 
 interface Props {
   domain: Domain
   entityName: string
+  /** When true, stay on the list layer — don't navigate to detail/edit/new layers */
+  listOnly?: boolean
+  /** Called when a list item is clicked in listOnly mode, with the resource ID */
+  onSelect?: (resourceId: string) => void
+  /** Currently selected resource ID (for highlight) */
+  selectedId?: string | null
+  /** Change this value to trigger a data refresh without resetting navigation */
+  refreshKey?: number
 }
 
 /**
@@ -58,25 +66,32 @@ function findLayerKey(keys: string[], entityName: string): string | undefined {
   return undefined
 }
 
-export function EntityListView({ domain, entityName }: Props) {
+export function EntityListView({ domain, entityName, listOnly, onSelect, selectedId, refreshKey }: Props) {
   const [layers, setLayers] = useState<Record<string, ILayer> | null>(null)
   const [navStack, setNavStack] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [instances, setInstances] = useState<{ resources: any[]; statuses: Map<string, string> } | null>(null)
+  const CLOSED_STATUSES = ['Resolved', 'Closed']
+  const [statusFilter, setStatusFilter] = useState<string | null>(listOnly ? 'Open' : null)
 
   const currentLayer = navStack.length > 0 ? navStack[navStack.length - 1] : null
 
   const refreshData = useCallback((resetNav = true) => {
     const slug = domain.domainSlug || domain.slug
-    return fetchLayers(slug).then(l => {
+    return Promise.all([
+      fetchLayers(slug),
+      fetchEntityInstances(domain.id, entityName),
+    ]).then(([l, inst]) => {
       const layers = l as Record<string, ILayer>
       setLayers(layers)
+      setInstances(inst)
       if (resetNav) {
         const initial = findLayerKey(Object.keys(layers), entityName)
         setNavStack(initial ? [initial] : [])
       }
     })
-  }, [domain.domainSlug, domain.slug, entityName])
+  }, [domain.domainSlug, domain.slug, domain.id, entityName])
 
   useEffect(() => {
     setLoading(true)
@@ -86,9 +101,71 @@ export function EntityListView({ domain, entityName }: Props) {
       .finally(() => setLoading(false))
   }, [refreshData])
 
+  // Re-fetch data (without nav reset) when refreshKey changes
+  useEffect(() => {
+    if (refreshKey) {
+      refreshData(false).catch(e => setError(e.message))
+    }
+  }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Collect unique statuses for filtering
+  const availableStatuses = useMemo(() => {
+    if (!instances) return []
+    const statuses = new Set<string>()
+    for (const s of instances.statuses.values()) {
+      if (s) statuses.add(s)
+    }
+    return Array.from(statuses).sort()
+  }, [instances])
+
+  // Hydrate list layers with actual resource data
+  const hydratedLayers = useMemo(() => {
+    if (!layers) return layers
+    if (!instances || instances.resources.length === 0) return layers
+    const result = { ...layers }
+    for (const [key, layer] of Object.entries(result)) {
+      if (layer.type !== 'layer') continue
+      const navLayer = layer as INavigationLayer
+      // Hydrate any list layer that has empty items
+      const hasEmptyList = navLayer.items.length > 0 && navLayer.items[0].items.length === 0
+      if (!hasEmptyList) continue
+
+      // Filter by status if active
+      const filtered = statusFilter === 'Open'
+        ? instances.resources.filter(r => !CLOSED_STATUSES.includes(instances.statuses.get(r.id) || ''))
+        : statusFilter
+          ? instances.resources.filter(r => instances.statuses.get(r.id) === statusFilter)
+          : instances.resources
+
+      result[key] = {
+        ...navLayer,
+        items: [{
+          type: 'list' as const,
+          items: filtered.map(r => ({
+            text: r.reference || r.value || r.id,
+            subtext: r.value && r.reference ? r.value : undefined,
+            address: `/${key}/${r.id}`,
+            status: instances.statuses.get(r.id),
+          })),
+        }],
+        searchBox: { placeholder: `Search ${formatNounName(entityName)}s...` },
+      }
+    }
+    return result
+  }, [layers, instances, entityName, statusFilter])
+
   const handleNavigate = useCallback((address: string) => {
-    if (!layers) return
-    const target = resolveAddress(address, Object.keys(layers))
+    if (!hydratedLayers) return
+    // In listOnly mode, extract resource ID and call onSelect instead of navigating
+    if (listOnly) {
+      if (onSelect && address) {
+        // Address format: /SupportRequests/{id}
+        const segments = address.replace(/^\//, '').split('/')
+        if (segments.length >= 2) onSelect(segments[segments.length - 1])
+      }
+      return
+    }
+    const target = resolveAddress(address, Object.keys(hydratedLayers))
     if (target) {
       setNavStack(prev => {
         const idx = prev.indexOf(target)
@@ -96,7 +173,7 @@ export function EntityListView({ domain, entityName }: Props) {
         return [...prev, target]
       })
     }
-  }, [layers])
+  }, [hydratedLayers, listOnly, onSelect])
 
   const handleAction = useCallback((btn: IActionButton) => {
     const address = btn.address || btn.link?.address
@@ -115,8 +192,8 @@ export function EntityListView({ domain, entityName }: Props) {
       return
     }
 
-    if (btn.action === 'edit' && layers) {
-      const keys = Object.keys(layers)
+    if (btn.action === 'edit' && hydratedLayers) {
+      const keys = Object.keys(hydratedLayers)
       const base = currentLayer?.replace(/-detail$/, '') || ''
       const editKey = findLayer(keys, `${base}-edit`)
       if (editKey) {
@@ -132,24 +209,68 @@ export function EntityListView({ domain, entityName }: Props) {
     setNavStack(prev => prev.length > 1 ? prev.slice(0, -1) : prev)
   }, [])
 
-  if (loading) return <div className="text-muted-foreground">Loading...</div>
+  if (loading) return <div className="p-4 text-muted-foreground">Loading...</div>
   if (error) return <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive">{error}</div>
 
   const displayName = formatNounName(entityName)
 
-  if (!layers || !currentLayer || !layers[currentLayer]) {
+  if (!hydratedLayers || !currentLayer || !hydratedLayers[currentLayer]) {
     return (
-      <div className="max-w-2xl mx-auto">
+      <div className={listOnly ? 'p-4' : 'max-w-2xl mx-auto'}>
         <h1 className="text-xl font-bold text-foreground font-display mb-4">{displayName}</h1>
         <p className="text-muted-foreground">No iLayer view found for "{displayName}".</p>
       </div>
     )
   }
 
-  const layer = layers[currentLayer]
+  const layer = hydratedLayers[currentLayer]
   const canGoBack = navStack.length > 1
 
-  // All layers (list, detail, edit, create) render via LayerRenderer
+  // Master pane mode: compact list with status filter and scroll
+  if (listOnly) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        {/* Status filter pills */}
+        {availableStatuses.length > 0 && (
+          <div className="flex gap-1 px-3 py-2 border-b border-border overflow-x-auto shrink-0">
+            <button
+              onClick={() => setStatusFilter('Open')}
+              className={`text-xs px-2 py-1 rounded-full whitespace-nowrap transition-colors ${
+                statusFilter === 'Open' ? 'bg-primary-600 text-white' : 'bg-muted text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Open
+            </button>
+            <button
+              onClick={() => setStatusFilter(null)}
+              className={`text-xs px-2 py-1 rounded-full whitespace-nowrap transition-colors ${
+                !statusFilter ? 'bg-primary-600 text-white' : 'bg-muted text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              All
+            </button>
+            {availableStatuses.map(s => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(statusFilter === s ? null : s)}
+                className={`text-xs px-2 py-1 rounded-full whitespace-nowrap transition-colors ${
+                  statusFilter === s ? 'bg-primary-600 text-white' : 'bg-muted text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* Scrollable list */}
+        <div className="flex-1 overflow-y-auto">
+          <LayerRenderer layer={layer} onNavigate={handleNavigate} onAction={handleAction} selectedId={selectedId} />
+        </div>
+      </div>
+    )
+  }
+
+  // Full page mode (non-sidebar)
   return (
     <div className="max-w-2xl mx-auto">
       {canGoBack && (

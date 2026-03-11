@@ -10,9 +10,10 @@ interface Props {
   converters?: Partial<ConverterRegistry>
   onAction?: (btn: IActionButton) => void
   onNavigate?: (address: string) => void
+  selectedId?: string | null
 }
 
-export function LayerRenderer({ layer, converters, onAction, onNavigate }: Props) {
+export function LayerRenderer({ layer, converters, onAction, onNavigate, selectedId }: Props) {
   const registry = useMemo(() => mergeRegistry(converters), [converters])
   const handleAction = onAction || (() => {})
   const handleNavigate = onNavigate || (() => {})
@@ -22,7 +23,7 @@ export function LayerRenderer({ layer, converters, onAction, onNavigate }: Props
       {layer.type === 'formLayer' ? (
         <FormLayer layer={layer} registry={registry} onAction={handleAction} onNavigate={handleNavigate} />
       ) : (
-        <NavigationLayer layer={layer} registry={registry} onAction={handleAction} onNavigate={handleNavigate} />
+        <NavigationLayer layer={layer} registry={registry} onAction={handleAction} onNavigate={handleNavigate} selectedId={selectedId} />
       )}
     </NavigationProvider>
   )

@@ -27,7 +27,7 @@ export function PaneLayout({
       {!hideMaster && (
         <div className={`
           ${hasDetail ? 'hidden md:flex' : 'flex'}
-          flex-col w-full md:w-80 lg:w-96 border-r border-border shrink-0
+          flex-col w-full md:w-80 lg:w-96 border-r border-border shrink-0 overflow-hidden
         `}>
           {renderMaster()}
         </div>
