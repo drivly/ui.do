@@ -507,7 +507,7 @@ function AppContent() {
             )}
             {view.type === 'dashboard' && !selectedDomainId && selectedApp && (appDomains.length > 1 || selectedApp.chatEndpoint) && (
               selectedApp.chatEndpoint
-                ? <ChatOverboardView appName={formatAppLabel(selectedApp)} appSlug={selectedApp.slug} endpoint={selectedApp.chatEndpoint} isAdmin={isAdmin} />
+                ? <ChatOverboardView appName={formatAppLabel(selectedApp)} appSlug={selectedApp.slug} endpoint={selectedApp.chatEndpoint} />
                 : <OverboardView
                     domains={appDomains}
                     appName={formatAppLabel(selectedApp)}
@@ -517,7 +517,7 @@ function AppContent() {
             )}
             {view.type === 'dashboard' && selectedDomain && (
               selectedApp?.chatEndpoint
-                ? <ChatOverboardView appName={formatAppLabel(selectedApp)} appSlug={selectedApp.slug} endpoint={selectedApp.chatEndpoint} requestId={selectedRequestId} domainId={selectedDomain.id} isAdmin={isAdmin} onSelectRequest={setSelectedRequestId} onStateChange={() => setListRefreshKey(k => k + 1)} />
+                ? <ChatOverboardView appName={formatAppLabel(selectedApp)} appSlug={selectedApp.slug} endpoint={selectedApp.chatEndpoint} requestId={selectedRequestId} domainId={selectedDomain.id} onSelectRequest={setSelectedRequestId} onStateChange={() => setListRefreshKey(k => k + 1)} />
                 : <DashboardView domain={selectedDomain} nouns={nouns} isAdmin={isAdmin} onNavigate={setView} />
             )}
             {view.type === 'schema' && selectedDomain && !selectedApp?.chatEndpoint && (

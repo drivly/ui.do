@@ -9,7 +9,6 @@ interface Props {
   endpoint?: string
   requestId?: string | null
   domainId?: string
-  isAdmin?: boolean
   onSelectRequest?: (id: string) => void
   onStateChange?: () => void
 }
@@ -277,7 +276,7 @@ function RequestActionBar({ requestId, domainId, chatRef, onSelectRequest, onSta
   )
 }
 
-export function ChatOverboardView({ appName, appSlug, endpoint, requestId, domainId, isAdmin, onSelectRequest, onStateChange }: Props) {
+export function ChatOverboardView({ appName, appSlug, endpoint, requestId, domainId, onSelectRequest, onStateChange }: Props) {
   const chatRef = useRef<ChatStreamHandle>(null)
 
   const field: ILayerField = {
