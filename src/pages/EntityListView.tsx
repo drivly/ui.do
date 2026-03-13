@@ -4,7 +4,7 @@ import { formatNounName, parseStateAddress } from '../utils'
 import { LayerRenderer } from '../components/LayerRenderer'
 import type { ILayer, INavigationLayer, IActionButton } from '../types'
 
-const POLL_INTERVAL = 5000
+const POLL_INTERVAL = 30000
 
 interface Props {
   domain: Domain
@@ -75,7 +75,18 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
   const [loading, setLoading] = useState(true)
   const [instances, setInstances] = useState<{ resources: any[]; statuses: Map<string, string> } | null>(null)
   const CLOSED_STATUSES = ['Resolved', 'Closed']
-  const [statusFilter, setStatusFilter] = useState<string | null>(listOnly ? 'Open' : null)
+  const statusStorageKey = `statusFilter:${domain.id}:${entityName}`
+  const [statusFilter, setStatusFilter] = useState<string | null>(() => {
+    if (!listOnly) return null
+    const saved = sessionStorage.getItem(statusStorageKey)
+    return saved !== null ? (saved || null) : 'Open'
+  })
+  const [searchText, setSearchText] = useState('')
+
+  const updateStatusFilter = useCallback((value: string | null) => {
+    setStatusFilter(value)
+    sessionStorage.setItem(statusStorageKey, value || '')
+  }, [statusStorageKey])
 
   const currentLayer = navStack.length > 0 ? navStack[navStack.length - 1] : null
 
@@ -123,12 +134,19 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
     }
   }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Poll for instance changes (created, updated, deleted)
+  // Poll for instance changes — only when tab is visible
   useEffect(() => {
-    const timer = setInterval(() => {
-      refreshInstances().catch(() => {}) // silent poll failures
-    }, POLL_INTERVAL)
-    return () => clearInterval(timer)
+    let timer: ReturnType<typeof setInterval> | null = null
+    const start = () => {
+      if (!timer) timer = setInterval(() => refreshInstances().catch(() => {}), POLL_INTERVAL)
+    }
+    const stop = () => {
+      if (timer) { clearInterval(timer); timer = null }
+    }
+    const onVisibility = () => document.hidden ? stop() : start()
+    if (!document.hidden) start()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility) }
   }, [refreshInstances])
 
   // Collect unique statuses for filtering
@@ -156,8 +174,8 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
       // Filter by status if active
       const filtered = statusFilter === 'Open'
         ? instances.resources.filter(r => !CLOSED_STATUSES.includes(instances.statuses.get(r.id) || ''))
-        : statusFilter
-          ? instances.resources.filter(r => instances.statuses.get(r.id) === statusFilter)
+        : statusFilter === 'Closed'
+          ? instances.resources.filter(r => CLOSED_STATUSES.includes(instances.statuses.get(r.id) || ''))
           : instances.resources
 
       result[key] = {
@@ -251,13 +269,35 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
 
   // Master pane mode: compact list with status filter and scroll
   if (listOnly) {
+    const searchPlaceholder = (layer as any).searchBox?.placeholder || `Search ${displayName}s...`
+    const actionButtons: IActionButton[] = (layer as any).actionButtons || []
     return (
       <div className="flex flex-col h-full overflow-hidden">
+        {/* Search bar + new button */}
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-border shrink-0">
+          <input
+            type="search"
+            placeholder={searchPlaceholder}
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            className="flex-1 px-3 py-2 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+          />
+          {actionButtons.map((btn, i) => (
+            <button
+              key={i}
+              onClick={() => handleAction(btn)}
+              title={formatNounName(btn.text)}
+              className="flex-shrink-0 p-2 border border-input rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            </button>
+          ))}
+        </div>
         {/* Status filter pills */}
         {availableStatuses.length > 0 && (
           <div className="flex gap-1 px-3 py-2 border-b border-border overflow-x-auto shrink-0">
             <button
-              onClick={() => setStatusFilter('Open')}
+              onClick={() => updateStatusFilter('Open')}
               className={`text-xs px-2 py-1 rounded-full whitespace-nowrap transition-colors ${
                 statusFilter === 'Open' ? 'bg-primary-600 text-white' : 'bg-muted text-muted-foreground hover:text-foreground'
               }`}
@@ -265,29 +305,26 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
               Open
             </button>
             <button
-              onClick={() => setStatusFilter(null)}
+              onClick={() => updateStatusFilter('Closed')}
+              className={`text-xs px-2 py-1 rounded-full whitespace-nowrap transition-colors ${
+                statusFilter === 'Closed' ? 'bg-primary-600 text-white' : 'bg-muted text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Closed
+            </button>
+            <button
+              onClick={() => updateStatusFilter(null)}
               className={`text-xs px-2 py-1 rounded-full whitespace-nowrap transition-colors ${
                 !statusFilter ? 'bg-primary-600 text-white' : 'bg-muted text-muted-foreground hover:text-foreground'
               }`}
             >
               All
             </button>
-            {availableStatuses.map(s => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(statusFilter === s ? null : s)}
-                className={`text-xs px-2 py-1 rounded-full whitespace-nowrap transition-colors ${
-                  statusFilter === s ? 'bg-primary-600 text-white' : 'bg-muted text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {s}
-              </button>
-            ))}
           </div>
         )}
         {/* Scrollable list */}
         <div className="flex-1 overflow-y-auto">
-          <LayerRenderer layer={layer} onNavigate={handleNavigate} onAction={handleAction} selectedId={selectedId} />
+          <LayerRenderer layer={layer} onNavigate={handleNavigate} onAction={handleAction} selectedId={selectedId} hideSearchBox externalSearchText={searchText} />
         </div>
       </div>
     )

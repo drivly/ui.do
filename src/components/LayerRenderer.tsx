@@ -11,9 +11,11 @@ interface Props {
   onAction?: (btn: IActionButton) => void
   onNavigate?: (address: string) => void
   selectedId?: string | null
+  hideSearchBox?: boolean
+  externalSearchText?: string
 }
 
-export function LayerRenderer({ layer, converters, onAction, onNavigate, selectedId }: Props) {
+export function LayerRenderer({ layer, converters, onAction, onNavigate, selectedId, hideSearchBox, externalSearchText }: Props) {
   const registry = useMemo(() => mergeRegistry(converters), [converters])
   const handleAction = onAction || (() => {})
   const handleNavigate = onNavigate || (() => {})
@@ -23,7 +25,7 @@ export function LayerRenderer({ layer, converters, onAction, onNavigate, selecte
       {layer.type === 'formLayer' ? (
         <FormLayer layer={layer} registry={registry} onAction={handleAction} onNavigate={handleNavigate} />
       ) : (
-        <NavigationLayer layer={layer} registry={registry} onAction={handleAction} onNavigate={handleNavigate} selectedId={selectedId} />
+        <NavigationLayer layer={layer} registry={registry} onAction={handleAction} onNavigate={handleNavigate} selectedId={selectedId} hideSearchBox={hideSearchBox} externalSearchText={externalSearchText} />
       )}
     </NavigationProvider>
   )

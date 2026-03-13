@@ -3,6 +3,7 @@ import type { INavigationLayer, IActionButton, ConverterRegistry } from '../type
 import { ActionButton } from './ActionButton'
 import { Menu } from './Menu'
 import { Toolbar } from './Toolbar'
+import { formatNounName } from '../utils'
 
 /** Returns true if the string is a template variable like {fieldId} */
 function isTemplateText(s: string): boolean {
@@ -15,10 +16,15 @@ interface Props {
   onAction?: (btn: IActionButton) => void
   onNavigate?: (address: string) => void
   selectedId?: string | null
+  /** Hide the built-in search box (when rendered externally) */
+  hideSearchBox?: boolean
+  /** Externally controlled search text */
+  externalSearchText?: string
 }
 
-export function NavigationLayer({ layer, registry: _registry, onAction, onNavigate, selectedId }: Props) {
-  const [searchText, setSearchText] = useState(layer.searchBox?.text || '')
+export function NavigationLayer({ layer, registry: _registry, onAction, onNavigate, selectedId, hideSearchBox, externalSearchText }: Props) {
+  const [internalSearchText, setInternalSearchText] = useState(layer.searchBox?.text || '')
+  const searchText = externalSearchText ?? internalSearchText
 
   // Filter items by search text if search box is present
   const filteredItems = layer.searchBox
@@ -36,17 +42,24 @@ export function NavigationLayer({ layer, registry: _registry, onAction, onNaviga
       {layer.menu && <Menu menu={layer.menu} onNavigate={onNavigate} />}
       {layer.toolbar && <Toolbar toolbar={layer.toolbar} onNavigate={onNavigate} />}
 
-      {layer.searchBox && (
+      {layer.searchBox && !hideSearchBox && (
         <div className="mb-4 flex items-center gap-2">
           <input
             type="search"
             placeholder={layer.searchBox.placeholder || 'Search...'}
-            value={searchText}
-            onChange={e => setSearchText(e.target.value)}
+            value={internalSearchText}
+            onChange={e => setInternalSearchText(e.target.value)}
             className="flex-1 px-3 py-2 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
           />
           {onAction && layer.actionButtons?.map((btn, i) => (
-            <ActionButton key={i} button={btn} onAction={onAction} />
+            <button
+              key={i}
+              onClick={() => onAction(btn)}
+              title={formatNounName(btn.text)}
+              className="flex-shrink-0 p-2 border border-input rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            </button>
           ))}
         </div>
       )}
