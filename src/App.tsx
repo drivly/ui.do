@@ -75,6 +75,64 @@ function formatOrgName(org: Organization): string {
   return raw.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
 }
 
+function DomainTabs({ domains, selectedDomain, onSelect }: { domains: Domain[]; selectedDomain: Domain | null; onSelect: (id: string) => void }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(false)
+
+  const checkOverflow = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    setCanScrollLeft(el.scrollLeft > 0)
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
+  }, [])
+
+  useEffect(() => {
+    checkOverflow()
+    const el = scrollRef.current
+    if (!el) return
+    const observer = new ResizeObserver(checkOverflow)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [checkOverflow, domains])
+
+  const scroll = useCallback((dir: 'left' | 'right') => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollBy({ left: dir === 'left' ? -120 : 120, behavior: 'smooth' })
+  }, [])
+
+  return (
+    <div className="flex items-center min-w-0 gap-0.5">
+      {canScrollLeft && (
+        <button onClick={() => scroll('left')} className="flex-shrink-0 p-0.5 text-muted-foreground hover:text-foreground transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+      )}
+      <div ref={scrollRef} onScroll={checkOverflow} className="flex items-center gap-1 overflow-x-auto min-w-0 hide-scrollbar">
+        {domains.map(d => (
+          <button
+            key={d.id}
+            onClick={() => onSelect(d.id)}
+            className={`px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap flex-shrink-0 ${
+              d.id === selectedDomain?.id
+                ? 'bg-muted text-foreground font-medium'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            }`}
+          >
+            {formatDomainLabel(d)}
+          </button>
+        ))}
+      </div>
+      {canScrollRight && (
+        <button onClick={() => scroll('right')} className="flex-shrink-0 p-0.5 text-muted-foreground hover:text-foreground transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      )}
+    </div>
+  )
+}
+
 function AppContent() {
   const { session, isAdmin, loading: sessionLoading } = useSession()
   const { apps, loading: appsLoading, error: appsError, refresh: refreshApps } = useApps()
@@ -291,10 +349,10 @@ function AppContent() {
     <div className="flex flex-col h-dvh bg-background overflow-hidden">
       {/* Header */}
       <header className="bg-card border-b border-border px-4 py-2 flex-shrink-0">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="flex items-center gap-x-3 min-h-[36px]">
           <div className="flex items-center gap-2 flex-shrink-0">
             {appsLoading ? (
-              <span className="text-sm text-muted-foreground font-display font-bold">ui.do</span>
+              <div className="px-3 py-1.5 text-sm rounded-md bg-muted text-muted-foreground font-display font-bold">ui.do</div>
             ) : appsError === 'Unauthorized' ? (
               <button onClick={redirectToLogin} className="text-sm text-primary-400 hover:text-primary-300 transition-colors font-display font-bold">ui.do — Sign in</button>
             ) : appsError ? (
@@ -427,20 +485,10 @@ function AppContent() {
             )}
           </div>
 
-          {/* Domain tabs — inline, wrapping with header */}
-          {selectedApp && navDomains.length > 0 && navDomains.map(d => (
-            <button
-              key={d.id}
-              onClick={() => handleSelectDomain(d.id)}
-              className={`px-2.5 py-1 text-xs rounded-md transition-colors whitespace-nowrap ${
-                d.id === selectedDomain?.id
-                  ? 'bg-muted text-foreground font-medium'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-              }`}
-            >
-              {formatDomainLabel(d)}
-            </button>
-          ))}
+          {/* Domain tabs — inline, scrollable with arrow buttons */}
+          {selectedApp && navDomains.length > 0 && (
+            <DomainTabs domains={navDomains} selectedDomain={selectedDomain} onSelect={handleSelectDomain} />
+          )}
         </div>
       </header>
 

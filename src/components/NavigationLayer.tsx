@@ -37,14 +37,17 @@ export function NavigationLayer({ layer, registry: _registry, onAction, onNaviga
       {layer.toolbar && <Toolbar toolbar={layer.toolbar} onNavigate={onNavigate} />}
 
       {layer.searchBox && (
-        <div className="mb-4">
+        <div className="mb-4 flex items-center gap-2">
           <input
             type="search"
             placeholder={layer.searchBox.placeholder || 'Search...'}
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
-            className="w-full px-3 py-2 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+            className="flex-1 px-3 py-2 border border-input rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
           />
+          {onAction && layer.actionButtons?.map((btn, i) => (
+            <ActionButton key={i} button={btn} onAction={onAction} />
+          ))}
         </div>
       )}
 
@@ -92,7 +95,7 @@ export function NavigationLayer({ layer, registry: _registry, onAction, onNaviga
         </div>
       ))}
 
-      {onAction && layer.actionButtons?.length ? (
+      {onAction && !layer.searchBox && layer.actionButtons?.length ? (
         <div className="mt-4 flex gap-2">
           {layer.actionButtons.map((btn, i) => (
             <ActionButton key={i} button={btn} onAction={onAction} />

@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { fetchLayers, fetchEntityInstances, sendStateEvent, type Domain } from '../api'
 import { formatNounName, parseStateAddress } from '../utils'
 import { LayerRenderer } from '../components/LayerRenderer'
 import type { ILayer, INavigationLayer, IActionButton } from '../types'
+
+const POLL_INTERVAL = 5000
 
 interface Props {
   domain: Domain
@@ -77,21 +79,34 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
 
   const currentLayer = navStack.length > 0 ? navStack[navStack.length - 1] : null
 
+  // Fingerprint for diffing — avoids unnecessary re-renders
+  const instanceFingerprintRef = useRef('')
+
+  const refreshInstances = useCallback(() => {
+    return fetchEntityInstances(domain.id, entityName).then(inst => {
+      // Build a fingerprint: resource ids + statuses
+      const fp = inst.resources.map(r => `${r.id}:${r.reference}:${r.value}:${inst.statuses.get(r.id) || ''}`).join('|')
+      if (fp !== instanceFingerprintRef.current) {
+        instanceFingerprintRef.current = fp
+        setInstances(inst)
+      }
+    })
+  }, [domain.id, entityName])
+
   const refreshData = useCallback((resetNav = true) => {
     const slug = domain.domainSlug || domain.slug
     return Promise.all([
       fetchLayers(slug),
-      fetchEntityInstances(domain.id, entityName),
-    ]).then(([l, inst]) => {
+      refreshInstances(),
+    ]).then(([l]) => {
       const layers = l as Record<string, ILayer>
       setLayers(layers)
-      setInstances(inst)
       if (resetNav) {
         const initial = findLayerKey(Object.keys(layers), entityName)
         setNavStack(initial ? [initial] : [])
       }
     })
-  }, [domain.domainSlug, domain.slug, domain.id, entityName])
+  }, [domain.domainSlug, domain.slug, entityName, refreshInstances])
 
   useEffect(() => {
     setLoading(true)
@@ -104,9 +119,17 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
   // Re-fetch data (without nav reset) when refreshKey changes
   useEffect(() => {
     if (refreshKey) {
-      refreshData(false).catch(e => setError(e.message))
+      refreshInstances().catch(e => setError(e.message))
     }
   }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Poll for instance changes (created, updated, deleted)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      refreshInstances().catch(() => {}) // silent poll failures
+    }, POLL_INTERVAL)
+    return () => clearInterval(timer)
+  }, [refreshInstances])
 
   // Collect unique statuses for filtering
   const availableStatuses = useMemo(() => {
