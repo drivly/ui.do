@@ -188,18 +188,23 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
           ? resources.filter(r => CLOSED_STATUSES.includes(statuses.get(r.id) || ''))
           : resources
 
+      // Use displayFields from iLayer to determine which columns to show
+      const displayFields = (navLayer as any).displayFields || {}
+      const primaryField = displayFields.primary || 'reference'
+      const secondaryField = displayFields.secondary
+
       result[key] = {
         ...navLayer,
         items: [{
           type: 'list' as const,
           items: filtered.map(r => ({
-            text: r.reference || r.value || r.id,
-            subtext: r.value && r.reference ? r.value : undefined,
+            text: r[primaryField] || r.reference || r.id,
+            subtext: secondaryField ? r[secondaryField] : undefined,
             address: `/${key}/${r.id}`,
             status: statuses.get(r.id),
           })),
         }],
-        searchBox: { placeholder: `Search ${formatNounName(entityName)}s...` },
+        searchBox: (navLayer as any).searchBox || { placeholder: `Search ${formatNounName(entityName)}s...` },
       }
     }
     return result

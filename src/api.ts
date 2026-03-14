@@ -345,16 +345,35 @@ export async function extractClaims(text: string): Promise<any> {
 
 /** Fetch messages for a support request from the 3NF messages table */
 export async function fetchRequestMessages(domainId: string, requestId: string): Promise<Array<{ role: string; content: string; timestamp?: string }>> {
-  // Try 3NF table first
-  const res = await apiFetch(`/graphdl/entities/Message?domain=${domainId}&where[supportRequestId][equals]=${requestId}&sort=createdAt&limit=1000`)
-  if (res.ok) {
-    const data = await res.json()
-    const msgs = (data.docs || []).map((doc: any) => ({
-      role: doc.role || 'user',
-      content: doc.body || doc.content || '',
-      timestamp: doc.sentAt || doc.createdAt,
-    })).filter((m: any) => m.content)
-    if (msgs.length > 0) return msgs
+  // Query both Message and SupportResponse entities for this request
+  // Role is derived from entity type: Message = user, SupportResponse = assistant
+  const [msgRes, respRes] = await Promise.all([
+    apiFetch(`/graphdl/entities/Message?domain=${domainId}&where[supportRequestId][equals]=${requestId}&sort=createdAt&limit=1000`),
+    apiFetch(`/graphdl/entities/SupportResponse?domain=${domainId}&where[supportRequestId][equals]=${requestId}&sort=createdAt&limit=1000`),
+  ])
+
+  const messages: Array<{ role: string; content: string; timestamp?: string }> = []
+
+  if (msgRes.ok) {
+    const data = await msgRes.json()
+    for (const doc of data.docs || []) {
+      const content = doc.body || doc.content || ''
+      if (content) messages.push({ role: 'user', content, timestamp: doc.sentAt || doc.createdAt })
+    }
+  }
+
+  if (respRes.ok) {
+    const data = await respRes.json()
+    for (const doc of data.docs || []) {
+      const content = doc.body || doc.content || ''
+      if (content) messages.push({ role: 'assistant', content, timestamp: doc.sentAt || doc.createdAt })
+    }
+  }
+
+  if (messages.length > 0) {
+    // Sort by timestamp to interleave user and assistant messages correctly
+    messages.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''))
+    return messages
   }
 
   // Fallback: legacy resources table (for messages created before 3NF migration)
