@@ -58,9 +58,20 @@ function findLayer(keys: string[], name: string): string | null {
   return match || null
 }
 
+/** Convert PascalCase to kebab-case: SupportRequest → support-request */
+function toKebab(name: string): string {
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/([A-Z])([A-Z][a-z])/g, '$1-$2').toLowerCase()
+}
+
 function findLayerKey(keys: string[], entityName: string): string | undefined {
   const lower = entityName.toLowerCase()
-  const candidates = [lower, `${lower}-list`, `list-${lower}`, `${lower}s`, `${lower}s-list`]
+  const kebab = toKebab(entityName)
+  const candidates = [
+    lower, kebab, `${kebab}s`,
+    `${lower}-list`, `${kebab}-list`, `${kebab}s-list`,
+    `list-${lower}`, `list-${kebab}`,
+    `${lower}s`, `${lower}s-list`,
+  ]
   for (const c of candidates) {
     const match = keys.find(k => k.toLowerCase() === c)
     if (match) return match
