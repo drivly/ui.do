@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { fetchLayers, fetchEntityInstances, sendStateEvent, type Domain } from '../api'
+import { useLiveEvents } from '../hooks/useLiveEvents'
 import { formatNounName, parseStateAddress } from '../utils'
 import { LayerRenderer } from '../components/LayerRenderer'
 import type { ILayer, INavigationLayer, IActionButton } from '../types'
 
-const POLL_INTERVAL = 30000
+// Instance tables that trigger a refresh when changed
+const INSTANCE_TABLES = new Set(['resources', 'graphs', 'resource_roles', 'state_machines', 'events'])
 
 interface Props {
   domain: Domain
@@ -145,20 +147,12 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
     }
   }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Poll for instance changes — only when tab is visible
-  useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | null = null
-    const start = () => {
-      if (!timer) timer = setInterval(() => refreshInstances().catch(() => {}), POLL_INTERVAL)
+  // Live event stream — refresh instances when data changes (replaces polling)
+  useLiveEvents(domain.id, useCallback((event) => {
+    if (INSTANCE_TABLES.has(event.table)) {
+      refreshInstances().catch(() => {})
     }
-    const stop = () => {
-      if (timer) { clearInterval(timer); timer = null }
-    }
-    const onVisibility = () => document.hidden ? stop() : start()
-    if (!document.hidden) start()
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility) }
-  }, [refreshInstances])
+  }, [refreshInstances]))
 
   // Collect unique statuses for filtering
   const availableStatuses = useMemo(() => {
