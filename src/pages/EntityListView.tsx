@@ -173,21 +173,26 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
   // Hydrate list layers with actual resource data
   const hydratedLayers = useMemo(() => {
     if (!layers) return layers
-    if (!instances || instances.resources.length === 0) return layers
     const result = { ...layers }
     for (const [key, layer] of Object.entries(result)) {
       if (layer.type !== 'layer') continue
       const navLayer = layer as INavigationLayer
-      // Hydrate any list layer that has empty items
-      const hasEmptyList = navLayer.items.length > 0 && navLayer.items[0].items.length === 0
-      if (!hasEmptyList) continue
+      // Detect template layers: items with {placeholder} patterns in text/subtext/address
+      const firstList = navLayer.items[0]
+      if (!firstList || firstList.type !== 'list') continue
+      const isTemplate = firstList.items.length === 0 ||
+        firstList.items.some((item: any) =>
+          item.subtext?.includes('{') || item.text?.includes('{') || item.address?.includes('{'))
+      if (!isTemplate) continue
 
-      // Filter by status if active
+      // Replace templates with live resource data (or empty list if no instances)
+      const resources = instances?.resources || []
+      const statuses = instances?.statuses || new Map()
       const filtered = statusFilter === 'Open'
-        ? instances.resources.filter(r => !CLOSED_STATUSES.includes(instances.statuses.get(r.id) || ''))
+        ? resources.filter(r => !CLOSED_STATUSES.includes(statuses.get(r.id) || ''))
         : statusFilter === 'Closed'
-          ? instances.resources.filter(r => CLOSED_STATUSES.includes(instances.statuses.get(r.id) || ''))
-          : instances.resources
+          ? resources.filter(r => CLOSED_STATUSES.includes(statuses.get(r.id) || ''))
+          : resources
 
       result[key] = {
         ...navLayer,
@@ -197,7 +202,7 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
             text: r.reference || r.value || r.id,
             subtext: r.value && r.reference ? r.value : undefined,
             address: `/${key}/${r.id}`,
-            status: instances.statuses.get(r.id),
+            status: statuses.get(r.id),
           })),
         }],
         searchBox: { placeholder: `Search ${formatNounName(entityName)}s...` },
