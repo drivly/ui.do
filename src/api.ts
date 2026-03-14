@@ -288,51 +288,37 @@ export async function updateDashboardFact(id: string, value: string): Promise<Re
   return data.doc
 }
 
-/** Fetch resource instances for an entity type, with state machine statuses */
+/** Fetch entity instances from 3NF tables, with state machine statuses */
 export async function fetchEntityInstances(domainId: string, nounName: string): Promise<{
-  resources: Array<{ id: string; reference?: string; value?: string; createdAt?: string }>
+  resources: Array<{ id: string; reference?: string; value?: string; createdAt?: string; [key: string]: any }>
   statuses: Map<string, string>
 }> {
-  // Find the noun by name
-  const nounParams = new URLSearchParams()
-  nounParams.set('where[domain][equals]', domainId)
-  nounParams.set('where[name][equals]', nounName)
-  nounParams.set('depth', '0')
-  nounParams.set('limit', '1')
-  const nounRes = await apiFetch(`/graphdl/raw/nouns?${nounParams}`)
-  if (!nounRes.ok) return { resources: [], statuses: new Map() }
-  const nounData = await nounRes.json()
-  const noun = nounData.docs?.[0]
-  if (!noun) return { resources: [], statuses: new Map() }
-
-  // Fetch resources and state machines in parallel
-  const resParams = new URLSearchParams()
-  resParams.set('where[noun][equals]', noun.id)
-  resParams.set('where[domain][equals]', domainId)
-  resParams.set('depth', '0')
-  resParams.set('pagination', 'false')
-  resParams.set('sort', '-createdAt')
-
+  // Query 3NF table and state machines in parallel
   const smParams = new URLSearchParams()
   smParams.set('where[domain][equals]', domainId)
   smParams.set('depth', '1')
   smParams.set('pagination', 'false')
 
-  const [resResponse, smResponse] = await Promise.all([
-    apiFetch(`/graphdl/raw/resources?${resParams}`),
+  const [entityRes, smResponse] = await Promise.all([
+    apiFetch(`/graphdl/entities/${nounName}?domain=${domainId}&sort=-createdAt&limit=1000`),
     apiFetch(`/graphdl/raw/state-machines?${smParams}`),
   ])
 
-  const resources = resResponse.ok ? (await resResponse.json()).docs || [] : []
+  const resources = entityRes.ok ? (await entityRes.json()).docs || [] : []
 
   const statuses = new Map<string, string>()
   if (smResponse.ok) {
     const smData = await smResponse.json()
     for (const sm of smData.docs || []) {
+      // State machines link to entities by name (resource ID) or resource FK
       const resourceId = typeof sm.resource === 'string' ? sm.resource : sm.resource?.id
-      const statusName = typeof sm.currentStatus === 'object' ? sm.currentStatus?.name
-        : typeof sm.stateMachineStatus === 'object' ? sm.stateMachineStatus?.name : ''
-      if (resourceId && statusName) statuses.set(resourceId, statusName)
+      const name = sm.name // state machine name = entity ID
+      const statusName = typeof sm.stateMachineStatus === 'object' ? sm.stateMachineStatus?.name
+        : typeof sm.currentStatus === 'object' ? sm.currentStatus?.name : ''
+      if (statusName) {
+        if (resourceId) statuses.set(resourceId, statusName)
+        if (name && name !== resourceId) statuses.set(name, statusName)
+      }
     }
   }
 
@@ -357,9 +343,21 @@ export async function extractClaims(text: string): Promise<any> {
   return res.json()
 }
 
-/** Fetch messages for a support request (Message resources linked by reference) */
+/** Fetch messages for a support request from the 3NF messages table */
 export async function fetchRequestMessages(domainId: string, requestId: string): Promise<Array<{ role: string; content: string; timestamp?: string }>> {
-  // Find the Message noun
+  // Try 3NF table first
+  const res = await apiFetch(`/graphdl/entities/Message?domain=${domainId}&where[supportRequestId][equals]=${requestId}&sort=createdAt&limit=1000`)
+  if (res.ok) {
+    const data = await res.json()
+    const msgs = (data.docs || []).map((doc: any) => ({
+      role: doc.role || 'user',
+      content: doc.body || doc.content || '',
+      timestamp: doc.sentAt || doc.createdAt,
+    })).filter((m: any) => m.content)
+    if (msgs.length > 0) return msgs
+  }
+
+  // Fallback: legacy resources table (for messages created before 3NF migration)
   const nounParams = new URLSearchParams()
   nounParams.set('where[domain][equals]', domainId)
   nounParams.set('where[name][equals]', 'Message')
@@ -371,7 +369,6 @@ export async function fetchRequestMessages(domainId: string, requestId: string):
   const noun = nounData.docs?.[0]
   if (!noun) return []
 
-  // Fetch message resources linked to this request
   const params = new URLSearchParams()
   params.set('where[noun][equals]', noun.id)
   params.set('where[domain][equals]', domainId)
@@ -379,10 +376,10 @@ export async function fetchRequestMessages(domainId: string, requestId: string):
   params.set('depth', '0')
   params.set('pagination', 'false')
   params.set('sort', 'createdAt')
-  const res = await apiFetch(`/graphdl/raw/resources?${params}`)
-  if (!res.ok) return []
-  const data = await res.json()
-  return (data.docs || []).map((doc: any) => {
+  const legacyRes = await apiFetch(`/graphdl/raw/resources?${params}`)
+  if (!legacyRes.ok) return []
+  const legacyData = await legacyRes.json()
+  return (legacyData.docs || []).map((doc: any) => {
     try {
       const parsed = JSON.parse(doc.value)
       if (parsed.role && parsed.content) return parsed
@@ -391,8 +388,16 @@ export async function fetchRequestMessages(domainId: string, requestId: string):
   }).filter(Boolean)
 }
 
-/** Fetch a single resource by ID */
-export async function fetchResource(id: string): Promise<{ id: string; reference?: string; value?: string } | null> {
+/** Fetch a single entity by ID — tries 3NF tables, falls back to resources */
+export async function fetchResource(id: string, domainId?: string, nounName?: string): Promise<{ id: string; reference?: string; value?: string; [key: string]: any } | null> {
+  // Try 3NF table if noun name is known
+  if (domainId && nounName) {
+    try {
+      const res = await apiFetch(`/graphdl/entities/${nounName}/${id}?domain=${domainId}`)
+      if (res.ok) return res.json()
+    } catch { /* fall through */ }
+  }
+  // Fallback to generic resources
   try {
     const res = await apiFetch(`/graphdl/raw/resources/${id}?depth=0`)
     if (!res.ok) return null
