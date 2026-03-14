@@ -80,17 +80,9 @@ export async function fetchApps(): Promise<AppRecord[]> {
   const docs = data.docs || data
   if (!Array.isArray(docs)) return []
   return docs.map((app: any) => {
-    // Parse description as JSON config if possible
-    if (app.description && typeof app.description === 'string') {
-      try {
-        const config = JSON.parse(app.description)
-        if (config.chatEndpoint) app.chatEndpoint = config.chatEndpoint
-        if (config.navigableDomains) app.navigableDomains = config.navigableDomains
-      } catch { /* not JSON, ignore */ }
-    }
-    // Convention: apps with "support" in slug get chat overboard with support tab only
-    if (!app.chatEndpoint && app.slug?.includes('support')) {
-      app.chatEndpoint = '/graphdl/chat'
+    // Chat config comes from the app record (appType, chatEndpoint)
+    if (app.appType === 'chat' && !app.navigableDomains) {
+      // For chat apps, default to showing only the support domain
       const supportDomain = (app.domains || []).find((d: any) =>
         typeof d === 'object' && d.domainSlug?.endsWith('-support')
       )
