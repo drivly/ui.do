@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react'
-import { streamChat, fetchRequestMessages } from '../../api'
+import { streamChat, fetchRequestMessages, fetchResource } from '../../api'
 import { Markdown } from '../Markdown'
 import type { ILayerField } from '../../types'
 
@@ -52,16 +52,22 @@ export const ChatStreamControl = forwardRef<ChatStreamHandle, {
     setStreamingContent('')
     const currentRequestId = requestId
     fetchRequestMessages(domainId, requestId)
-      .then(msgs => {
-        // Guard against stale response from a previous request
+      .then(async msgs => {
         if (activeRequestRef.current !== currentRequestId) return
-        setMessages(msgs
+        const parsed = msgs
           .filter(m => m.role && m.content)
           .map(m => ({
             role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
             content: m.content,
           }))
-        )
+        // If no messages, show the request's reference as the initial user message
+        if (parsed.length === 0) {
+          const resource = await fetchResource(requestId)
+          if (resource?.reference && activeRequestRef.current === currentRequestId) {
+            parsed.push({ role: 'user', content: resource.reference })
+          }
+        }
+        if (activeRequestRef.current === currentRequestId) setMessages(parsed)
       })
       .catch(() => {
         if (activeRequestRef.current !== currentRequestId) return

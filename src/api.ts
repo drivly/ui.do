@@ -391,6 +391,15 @@ export async function fetchRequestMessages(domainId: string, requestId: string):
   }).filter(Boolean)
 }
 
+/** Fetch a single resource by ID */
+export async function fetchResource(id: string): Promise<{ id: string; reference?: string; value?: string } | null> {
+  try {
+    const res = await apiFetch(`/graphdl/raw/resources/${id}?depth=0`)
+    if (!res.ok) return null
+    return res.json()
+  } catch { return null }
+}
+
 /** Create a new reading (constraint or fact) in a domain */
 export async function createReading(domainId: string, text: string): Promise<Reading> {
   const res = await apiFetch('/graphdl/raw/readings', {
