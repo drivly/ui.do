@@ -69,15 +69,6 @@ export const ChatStreamControl = forwardRef<ChatStreamHandle, {
         }
         if (activeRequestRef.current === currentRequestId) {
           setMessages(parsed)
-          // Auto-draft: only when real Message resources exist with user content but no assistant reply
-          const hasRealMessages = msgs.length > 0
-          const hasUser = parsed.some(m => m.role === 'user')
-          const hasAssistant = parsed.some(m => m.role === 'assistant')
-          if (hasRealMessages && hasUser && !hasAssistant) {
-            setLoadingHistory(false)
-            doStream(parsed)
-            return
-          }
         }
       })
       .catch(() => {
