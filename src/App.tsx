@@ -257,13 +257,19 @@ function AppContent() {
     window.history.replaceState(null, '', url)
   }, [apps, orgs, selectedOrgId, selectedAppId, selectedDomainId, view, selectedRequestId, urlRestored])
 
-  const selectedApp = selectedAppId ? filteredApps.find(a => a.id === selectedAppId) || apps.find(a => a.id === selectedAppId) : undefined
+  const selectedApp = useMemo(() =>
+    selectedAppId ? filteredApps.find(a => a.id === selectedAppId) || apps.find(a => a.id === selectedAppId) : undefined,
+    [selectedAppId, filteredApps, apps]
+  )
   const appDomains = useMemo(() => selectedApp ? getAppDomains(selectedApp) : [], [selectedApp])
   const navDomains = useMemo(() => {
     if (!selectedApp?.navigableDomains || selectedApp.navigableDomains.length === 0) return appDomains
     return appDomains.filter(d => selectedApp.navigableDomains!.includes(d.id))
   }, [selectedApp, appDomains])
-  const selectedDomain = selectedDomainId ? appDomains.find(d => d.id === selectedDomainId) || appDomains[0] : (appDomains.length === 1 ? appDomains[0] : null)
+  const selectedDomain = useMemo(() =>
+    selectedDomainId ? appDomains.find(d => d.id === selectedDomainId) || appDomains[0] : (appDomains.length === 1 ? appDomains[0] : null),
+    [selectedDomainId, appDomains]
+  )
   const { nouns } = useNouns(selectedDomain?.id)
 
   // When apps refresh and we have a pending slug, select the new app
@@ -502,7 +508,9 @@ function AppContent() {
           <>
             {/* Chat apps: show SupportRequest entity list from iLayer readings */}
             {selectedDomain && selectedApp?.chatEndpoint && (
-              <EntityListView domain={selectedDomain} entityName="SupportRequest" listOnly onSelect={setSelectedRequestId} selectedId={selectedRequestId} refreshKey={listRefreshKey} />
+              <div className="flex flex-col h-full overflow-hidden" key="entity-list-stable">
+                <EntityListView domain={selectedDomain} entityName="SupportRequest" listOnly onSelect={setSelectedRequestId} selectedId={selectedRequestId} refreshKey={listRefreshKey} />
+              </div>
             )}
             {/* Non-chat apps: show noun navigation sidebar */}
             {selectedDomain && !selectedApp?.chatEndpoint && view.type !== 'build' && view.type !== 'uod' && (

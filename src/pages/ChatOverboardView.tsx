@@ -85,9 +85,14 @@ function RequestActionBar({ requestId, domainId, chatRef, onSelectRequest, onSta
 
   const loadState = useCallback(async () => {
     const state = await fetchRequestState('SupportRequest', requestId)
-    if (state) {
+    if (state && state.currentState) {
       setCurrentState(state.currentState)
       setAvailableEvents(state.availableEvents || [])
+    } else {
+      // No state machine instance yet — show initial state events
+      // The first event (e.g. 'acknowledge') will auto-create the instance
+      setCurrentState('Received')
+      setAvailableEvents(['acknowledge', 'triage', 'resolve', 'close'])
     }
   }, [requestId])
 

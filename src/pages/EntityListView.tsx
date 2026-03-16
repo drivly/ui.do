@@ -1,12 +1,24 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { fetchLayers, fetchEntityInstances, sendStateEvent, type Domain } from '../api'
+import { fetchLayers, fetchEntityInstances, sendStateEvent, fetchEntityState, type Domain, type EntityState } from '../api'
 import { useLiveEvents } from '../hooks/useLiveEvents'
-import { formatNounName, parseStateAddress } from '../utils'
+import { formatNounName, parseStateAddress, formatDate } from '../utils'
 import { LayerRenderer } from '../components/LayerRenderer'
 import type { ILayer, INavigationLayer, IActionButton } from '../types'
 
-// Instance tables that trigger a refresh when changed
-const INSTANCE_TABLES = new Set(['resources', 'graphs', 'resource_roles', 'state_machines', 'events'])
+// Tables that trigger a refresh when changed — includes both legacy collections and 3NF entity tables
+const INSTANCE_TABLES = new Set([
+  'resources', 'graphs', 'resource_roles', 'state_machines', 'events',
+  // 3NF entity tables use snake_case plural names derived from noun names
+  // Rather than enumerating all possible entity tables, we match any table
+  // that isn't a metamodel table (nouns, readings, constraints, etc.)
+])
+const METAMODEL_TABLES = new Set([
+  'nouns', 'graph_schemas', 'readings', 'roles', 'constraints', 'constraint_spans',
+  'state_machine_definitions', 'statuses', 'transitions', 'guards', 'event_types',
+  'verbs', 'functions', 'streams', 'generators', 'cdc_events',
+  'organizations', 'org_memberships', 'apps', 'domains',
+  'models', 'agent_definitions', 'agents', 'completions', 'citations', 'graph_citations',
+])
 
 interface Props {
   domain: Domain
@@ -65,6 +77,97 @@ function toKebab(name: string): string {
   return name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replace(/([A-Z])([A-Z][a-z])/g, '$1-$2').toLowerCase()
 }
 
+// ---------------------------------------------------------------------------
+// State Machine Action Bar — shown on entity detail views
+// ---------------------------------------------------------------------------
+
+const STATE_COLORS: Record<string, string> = {
+  Received: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300',
+  Triaging: 'bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-300',
+  WaitingOnCustomer: 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300',
+  Resolved: 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300',
+  Draft: 'bg-gray-100 text-gray-800 dark:bg-gray-900/50 dark:text-gray-300',
+  Sent: 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300',
+  Proposed: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300',
+  Approved: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300',
+  InProgress: 'bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-300',
+  Shipped: 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300',
+}
+
+const EVENT_STYLES: Record<string, string> = {
+  resolve: 'bg-green-600 hover:bg-green-700 text-white',
+  close: 'bg-gray-600 hover:bg-gray-700 text-white',
+  reopen: 'bg-amber-600 hover:bg-amber-700 text-white',
+  triage: 'bg-blue-600 hover:bg-blue-700 text-white',
+  send: 'bg-green-600 hover:bg-green-700 text-white',
+  approve: 'bg-blue-600 hover:bg-blue-700 text-white',
+  start: 'bg-sky-600 hover:bg-sky-700 text-white',
+  ship: 'bg-green-600 hover:bg-green-700 text-white',
+  reject: 'bg-red-600 hover:bg-red-700 text-white',
+}
+
+function EntityStateBar({ entityName, entityId, onStateChange }: {
+  entityName: string
+  entityId: string
+  onStateChange?: () => void
+}) {
+  const [state, setState] = useState<EntityState | null>(null)
+  const [acting, setActing] = useState(false)
+
+  const loadState = useCallback(async () => {
+    const s = await fetchEntityState(entityName, entityId)
+    setState(s)
+  }, [entityName, entityId])
+
+  useEffect(() => {
+    setState(null)
+    loadState()
+  }, [loadState])
+
+  const handleEvent = useCallback(async (event: string) => {
+    setActing(true)
+    try {
+      await sendStateEvent(entityName, entityId, event)
+      await loadState()
+      onStateChange?.()
+    } finally {
+      setActing(false)
+    }
+  }, [entityName, entityId, loadState, onStateChange])
+
+  if (!state?.currentState) return null
+
+  const statusColor = STATE_COLORS[state.currentState] || 'bg-muted text-muted-foreground'
+  const transitions = state.availableTransitions || []
+  const events = transitions.length > 0
+    ? transitions.map(t => t.event)
+    : (state.availableEvents || [])
+  // Deduplicate events
+  const uniqueEvents = [...new Set(events)]
+
+  return (
+    <div className="flex items-center gap-2 mb-4 px-1">
+      <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusColor}`}>
+        {formatNounName(state.currentState)}
+      </span>
+      <div className="flex-1" />
+      {uniqueEvents.map(event => {
+        const style = EVENT_STYLES[event] || 'bg-primary-600 hover:bg-primary-700 text-white'
+        return (
+          <button
+            key={event}
+            onClick={() => handleEvent(event)}
+            disabled={acting}
+            className={`text-xs px-3 py-1 rounded-md font-medium transition-colors disabled:opacity-50 ${style}`}
+          >
+            {formatNounName(event)}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function findLayerKey(keys: string[], entityName: string): string | undefined {
   const lower = entityName.toLowerCase()
   const kebab = toKebab(entityName)
@@ -95,6 +198,7 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
     return saved !== null ? (saved || null) : 'Open'
   })
   const [searchText, setSearchText] = useState('')
+  const [detailEntityId, setDetailEntityId] = useState<string | null>(null)
 
   const updateStatusFilter = useCallback((value: string | null) => {
     setStatusFilter(value)
@@ -117,10 +221,17 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
     })
   }, [domain.id, entityName])
 
+  // Clear selection if the selected entity was deleted (checked after each refresh)
+  useEffect(() => {
+    if (selectedId && instances && !instances.resources.some(r => r.id === selectedId)) {
+      onSelect?.('')
+    }
+  }, [instances, selectedId, onSelect])
+
+  const domainSlug = domain.domainSlug || domain.slug
   const refreshData = useCallback((resetNav = true) => {
-    const slug = domain.domainSlug || domain.slug
     return Promise.all([
-      fetchLayers(slug),
+      fetchLayers(domainSlug),
       refreshInstances(),
     ]).then(([l]) => {
       const layers = l as Record<string, ILayer>
@@ -130,15 +241,16 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
         setNavStack(initial ? [initial] : [])
       }
     })
-  }, [domain.domainSlug, domain.slug, entityName, refreshInstances])
+  }, [domainSlug, entityName, refreshInstances])
 
   useEffect(() => {
-    setLoading(true)
+    // Only show loading on initial mount, not on re-fetches
+    if (!layers) setLoading(true)
     setError(null)
-    refreshData(true)
+    refreshData(!layers)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
-  }, [refreshData])
+  }, [refreshData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-fetch data (without nav reset) when refreshKey changes
   useEffect(() => {
@@ -149,7 +261,8 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
 
   // Live event stream — refresh instances when data changes (replaces polling)
   useLiveEvents(domain.id, useCallback((event) => {
-    if (INSTANCE_TABLES.has(event.table)) {
+    // Refresh on any table change that isn't a metamodel definition table
+    if (INSTANCE_TABLES.has(event.table) || !METAMODEL_TABLES.has(event.table)) {
       refreshInstances().catch(() => {})
     }
   }, [refreshInstances]))
@@ -186,23 +299,48 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
         ? resources.filter(r => !CLOSED_STATUSES.includes(statuses.get(r.id) || ''))
         : statusFilter === 'Closed'
           ? resources.filter(r => CLOSED_STATUSES.includes(statuses.get(r.id) || ''))
-          : resources
+          : statusFilter && statusFilter !== 'All'
+            ? resources.filter(r => statuses.get(r.id) === statusFilter)
+            : resources
 
-      // Use displayFields from iLayer to determine which columns to show
-      const displayFields = (navLayer as any).displayFields || {}
-      const primaryField = displayFields.primary || 'reference'
-      const secondaryField = displayFields.secondary
+      // Display field mapping from iLayer — derived from domain readings by the generator
+      const { primary: primaryField, secondary: secondaryField, date: dateField } =
+        (navLayer as any).displayFields || {} as { primary?: string; secondary?: string; date?: string }
+      const gridCellTemplate = (navLayer as any).gridCell as
+        { rows: number; columns: number; elements: Array<{ field: string; row: number; column: number; columnSpan?: number; horizontalAlignment?: string; style?: string; format?: string }> } | undefined // alignment types are cast at render time
 
       result[key] = {
         ...navLayer,
         items: [{
           type: 'list' as const,
-          items: filtered.map(r => ({
-            text: r[primaryField] || r.reference || r.id,
-            subtext: secondaryField ? r[secondaryField] : undefined,
-            address: `/${key}/${r.id}`,
-            status: statuses.get(r.id),
-          })),
+          items: filtered.map(r => {
+            // Resolve display values from the iLayer-declared field mapping
+            const text = (primaryField && r[primaryField]) || r.reference || r.id
+            const subtext = secondaryField ? r[secondaryField] : undefined
+            const dateVal = dateField ? r[dateField] : r.createdAt
+
+            // Build grid cell by resolving element field values from entity data
+            const grid = gridCellTemplate ? {
+              ...gridCellTemplate,
+              elements: gridCellTemplate.elements.map(el => ({
+                ...el,
+                value: el.format === 'date' && r[el.field]
+                  ? formatDate(r[el.field])
+                  : r[el.field] || '',
+              })),
+              address: `/${key}/${r.id}`,
+              metadata: { id: r.id, status: statuses.get(r.id) || '' },
+            } : undefined
+
+            return {
+              text,
+              subtext,
+              date: dateVal ? formatDate(dateVal) : undefined,
+              address: `/${key}/${r.id}`,
+              status: statuses.get(r.id),
+              grid,
+            }
+          }),
         }],
         searchBox: (navLayer as any).searchBox || { placeholder: `Search ${formatNounName(entityName)}s...` },
       }
@@ -223,6 +361,13 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
     }
     const target = resolveAddress(address, Object.keys(hydratedLayers))
     if (target) {
+      // Extract entity ID from address when navigating to a detail layer
+      const segments = address.replace(/^\//, '').split('/')
+      if (target.endsWith('-detail') && segments.length >= 2) {
+        setDetailEntityId(segments[segments.length - 1])
+      } else if (!target.endsWith('-detail')) {
+        setDetailEntityId(null)
+      }
       setNavStack(prev => {
         const idx = prev.indexOf(target)
         if (idx >= 0) return prev.slice(0, idx + 1)
@@ -262,10 +407,19 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
   }, [handleNavigate, refreshData, layers, currentLayer])
 
   const handleBack = useCallback(() => {
-    setNavStack(prev => prev.length > 1 ? prev.slice(0, -1) : prev)
+    setNavStack(prev => {
+      if (prev.length <= 1) return prev
+      const next = prev.slice(0, -1)
+      // Clear entity ID if we're leaving a detail layer
+      if (!next[next.length - 1]?.endsWith('-detail')) {
+        setDetailEntityId(null)
+      }
+      return next
+    })
   }, [])
 
-  if (loading) return <div className="p-4 text-muted-foreground">Loading...</div>
+  // Loading state renders inline — never replace the whole component tree
+  // if (loading) return <div className="p-4 text-muted-foreground">Loading...</div>
   if (error) return <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive">{error}</div>
 
   const displayName = formatNounName(entityName)
@@ -281,6 +435,7 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
 
   const layer = hydratedLayers[currentLayer]
   const canGoBack = navStack.length > 1
+  const isDetailView = currentLayer.endsWith('-detail') && !!detailEntityId
 
   // Master pane mode: compact list with status filter and scroll
   if (listOnly) {
@@ -335,6 +490,26 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
             >
               All
             </button>
+            {availableStatuses.length > 2 && (
+              <>
+                <span className="text-border mx-0.5">|</span>
+                {availableStatuses.map(status => {
+                  const color = STATE_COLORS[status] || 'bg-muted text-muted-foreground'
+                  const isActive = statusFilter === status
+                  return (
+                    <button
+                      key={status}
+                      onClick={() => updateStatusFilter(isActive ? 'Open' : status)}
+                      className={`text-xs px-2 py-1 rounded-full whitespace-nowrap transition-colors ${
+                        isActive ? color : 'bg-muted/50 text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {formatNounName(status)}
+                    </button>
+                  )
+                })}
+              </>
+            )}
           </div>
         )}
         {/* Scrollable list */}
@@ -354,6 +529,13 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
           Back
         </button>
+      )}
+      {isDetailView && (
+        <EntityStateBar
+          entityName={entityName}
+          entityId={detailEntityId!}
+          onStateChange={() => refreshData(false).catch(e => setError(e.message))}
+        />
       )}
       <LayerRenderer layer={layer} onNavigate={handleNavigate} onAction={handleAction} />
     </div>

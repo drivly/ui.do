@@ -49,6 +49,56 @@ export interface IElementLayout {
 }
 
 // ---------------------------------------------------------------------------
+// Grid Cell (iFactr IGridCell / IElement abstraction)
+// ---------------------------------------------------------------------------
+
+/**
+ * An element positioned within a grid cell.
+ * Bound to an entity field via `field` (resolved from domain readings).
+ * Platform renderers implement measure/location; web/CSS ignores them.
+ */
+export interface ILayerElement {
+  /** Entity field name — bound to reading (e.g. 'contactName', 'createdAt') */
+  field: string
+  /** Grid row (0-based) */
+  row: number
+  /** Grid column (0-based) */
+  column: number
+  rowSpan?: number
+  columnSpan?: number
+  horizontalAlignment?: 'start' | 'center' | 'end' | 'stretch'
+  verticalAlignment?: 'top' | 'center' | 'bottom' | 'stretch'
+  margin?: { top?: number; right?: number; bottom?: number; left?: number }
+  /** Semantic style hint — renderer maps to platform-specific styling */
+  style?: 'primary' | 'secondary' | 'muted' | 'date' | 'status' | 'label'
+  /** Format hint for value display */
+  format?: 'text' | 'date' | 'number' | 'email' | 'markdown' | 'truncate'
+  /** Two-phase layout: desired size after measure (set by platform renderer) */
+  measure?: { width: number; height: number }
+  /** Two-phase layout: final position and size (set by platform renderer) */
+  location?: { x: number; y: number; width: number; height: number }
+  visibility?: 'visible' | 'hidden' | 'collapsed'
+}
+
+/**
+ * A grid cell containing positioned elements.
+ * Used for list items, detail headers, card layouts, etc.
+ * The grid structure is declared (from readings or semantic defaults),
+ * the renderer maps it to platform-specific layout (CSS Grid on web).
+ */
+export interface ILayerGridCell {
+  rows: number
+  columns: number
+  elements: ILayerElement[]
+  minHeight?: number
+  maxHeight?: number
+  /** Navigation address when the cell is tapped/clicked */
+  address?: string
+  /** Metadata attached to the cell (e.g. entity ID, status) */
+  metadata?: Record<string, string>
+}
+
+// ---------------------------------------------------------------------------
 // Fields (Form Controls)
 // ---------------------------------------------------------------------------
 
@@ -145,6 +195,8 @@ export interface IActionButton {
 export interface INavigationItem {
   text: string
   subtext?: string
+  /** Formatted date string — rendered right-aligned on the primary text line */
+  date?: string
   address?: string
   link?: ILink
   status?: string
@@ -153,6 +205,8 @@ export interface INavigationItem {
   /** Accessory link (e.g., disclosure indicator target) */
   accessoryLink?: ILink
   onClick?: () => void
+  /** Grid cell layout — when present, replaces text/subtext/date rendering */
+  grid?: ILayerGridCell
 }
 
 export interface IListItem {
@@ -230,6 +284,8 @@ export interface INavigationLayer {
   menu?: IMenu
   toolbar?: IToolbar
   searchBox?: ISearchBox
+  /** Display field mapping from domain readings — which entity fields render in which list item slots */
+  displayFields?: { primary?: string; secondary?: string; date?: string }
 }
 
 export type ILayer = IFormLayer | INavigationLayer

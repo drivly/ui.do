@@ -23,15 +23,13 @@ export function PaneLayout({
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Master pane */}
-      {!hideMaster && (
-        <div className={`
-          ${hasDetail ? 'hidden md:flex' : 'flex'}
-          flex-col w-full md:w-80 lg:w-96 border-r border-border shrink-0 overflow-hidden
-        `}>
-          {renderMaster()}
-        </div>
-      )}
+      {/* Master pane — always mounted, hidden via CSS to prevent unmount flicker */}
+      <div className={`
+        ${hideMaster ? 'hidden' : hasDetail ? 'hidden md:flex' : 'flex'}
+        flex-col w-full md:w-80 lg:w-96 border-r border-border shrink-0 overflow-hidden
+      `}>
+        {renderMaster()}
+      </div>
 
       {/* Detail pane */}
       {hasDetail && (

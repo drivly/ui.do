@@ -31,7 +31,9 @@ export const ChatStreamControl = forwardRef<ChatStreamHandle, {
   const [supportRequestId, setSupportRequestId] = useState<string | undefined>(requestId || undefined)
   const scrollRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<ChatMessage[]>([])
+  const streamingContentRef = useRef('')
   const activeRequestRef = useRef<string | null | undefined>(requestId)
+  const streamGenRef = useRef(0)
   messagesRef.current = messages
 
   const endpoint = field.link?.address || '/ai/chat'
@@ -46,6 +48,7 @@ export const ChatStreamControl = forwardRef<ChatStreamHandle, {
       setStreamingContent('')
       return
     }
+    setMessages([]) // Clear stale messages immediately before loading new ones
     setSupportRequestId(requestId)
     setLoadingHistory(true)
     setStreaming(false)
@@ -86,8 +89,10 @@ export const ChatStreamControl = forwardRef<ChatStreamHandle, {
   }, [messages, streamingContent])
 
   const doStream = useCallback((msgs: ChatMessage[]) => {
+    const gen = ++streamGenRef.current
     setStreaming(true)
     setStreamingContent('')
+    streamingContentRef.current = ''
 
     const allMessages = msgs.map(m => ({ role: m.role, content: m.content }))
 
@@ -98,18 +103,24 @@ export const ChatStreamControl = forwardRef<ChatStreamHandle, {
         ...(appSlug && { appSlug }),
         ...(supportRequestId && { supportRequestId }),
       },
-      (chunk) => setStreamingContent(prev => prev + chunk),
+      (chunk) => {
+        if (streamGenRef.current !== gen) return // stale stream, ignore
+        setStreamingContent(prev => { const next = prev + chunk; streamingContentRef.current = next; return next })
+      },
       (result) => {
-        setStreamingContent(prev => {
-          if (prev) {
-            setMessages(current => [...current, { role: 'assistant', content: prev }])
-          }
-          return ''
-        })
+        if (streamGenRef.current !== gen) return // stale stream, ignore
+        // Add assistant message from either the ref (streaming) or the result (JSON fallback)
+        const finalContent = streamingContentRef.current || result?.content || result?.message || result?.text || result?.response
+        if (finalContent) {
+          setMessages(current => [...current, { role: 'assistant', content: typeof finalContent === 'string' ? finalContent : JSON.stringify(finalContent) }])
+        }
+        setStreamingContent('')
+        streamingContentRef.current = ''
         setStreaming(false)
         if (result?.supportRequestId) setSupportRequestId(result.supportRequestId)
       },
       (error) => {
+        if (streamGenRef.current !== gen) return // stale stream, ignore
         setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${error.message}` }])
         setStreaming(false)
         setStreamingContent('')

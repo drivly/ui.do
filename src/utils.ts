@@ -1,3 +1,12 @@
+/** Format a date string for display (e.g. "Feb 9, 2026") */
+export function formatDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr.replace(' ', 'T'))
+    if (isNaN(d.getTime())) return ''
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  } catch { return '' }
+}
+
 /**
  * Parse a state machine address like /state/{machineType}/{instanceId}/{event}
  * Returns null if the address doesn't match the pattern.

@@ -345,13 +345,13 @@ export async function extractClaims(text: string): Promise<any> {
 
 /** Fetch messages for a support request from the 3NF messages table */
 export async function fetchRequestMessages(domainId: string, requestId: string): Promise<Array<{ role: string; content: string; timestamp?: string }>> {
-  // Query Message entities — subtypes (SupportResponse) are included via UNION in the backend
-  // Role is derived from _type: Message = user, SupportResponse = assistant
+  // Query Message entities — sorted chronologically (ASC)
+  // Role is determined by senderIdentity: 'assistant' = assistant, anything else = user
   const res = await apiFetch(`/graphdl/entities/Message?domain=${domainId}&where[supportRequestId][equals]=${requestId}&sort=createdAt&limit=1000`)
   if (res.ok) {
     const data = await res.json()
     const msgs = (data.docs || []).map((doc: any) => ({
-      role: doc._type === 'SupportResponse' ? 'assistant' : 'user',
+      role: doc.senderIdentity === 'assistant' ? 'assistant' : 'user',
       content: doc.body || doc.content || '',
       timestamp: doc.sentAt || doc.createdAt,
     })).filter((m: any) => m.content)
@@ -427,10 +427,13 @@ export async function sendStateEvent(machineType: string, instanceId: string, ev
   return res.json()
 }
 
-export async function fetchRequestState(machineType: string, instanceId: string): Promise<{
+export interface EntityState {
   currentState?: string
   availableEvents?: string[]
-} | null> {
+  availableTransitions?: Array<{ event: string; target: string; guards?: string[] }>
+}
+
+export async function fetchEntityState(machineType: string, instanceId: string): Promise<EntityState | null> {
   try {
     const res = await apiFetch(`/state/${machineType}/${instanceId}`)
     if (!res.ok) return null
@@ -439,6 +442,9 @@ export async function fetchRequestState(machineType: string, instanceId: string)
     return null
   }
 }
+
+/** @deprecated Use fetchEntityState instead */
+export const fetchRequestState = fetchEntityState
 
 /**
  * Send a chat message and stream the response via fetch ReadableStream.
@@ -469,7 +475,8 @@ export async function streamChat(
     if (!isSSE) {
       // Non-streaming JSON response — extract content directly
       const data = await res.json()
-      if (data.content) onChunk(typeof data.content === 'string' ? data.content : JSON.stringify(data.content))
+      const content = data.content || data.message || data.text || data.response
+      if (content) onChunk(typeof content === 'string' ? content : JSON.stringify(content))
       onDone(data)
       return
     }
@@ -492,8 +499,9 @@ export async function streamChat(
       buffer = lines.pop() || ''
 
       for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6)
+        const trimmed = line.replace(/\r$/, '')
+        if (trimmed.startsWith('data: ')) {
+          const data = trimmed.slice(6)
           if (data === '[DONE]') {
             onDone({})
             return
@@ -501,7 +509,10 @@ export async function streamChat(
           try {
             const parsed = JSON.parse(data)
             if (parsed.content) onChunk(parsed.content)
-            if (parsed.done) onDone(parsed)
+            if (parsed.done) {
+              onDone(parsed)
+              return
+            }
           } catch {
             onChunk(data)
           }

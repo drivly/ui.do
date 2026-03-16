@@ -1,9 +1,68 @@
 import { useState } from 'react'
-import type { INavigationLayer, IActionButton, ConverterRegistry } from '../types'
+import type { INavigationLayer, IActionButton, ILayerGridCell, ConverterRegistry } from '../types'
 import { ActionButton } from './ActionButton'
 import { Menu } from './Menu'
 import { Toolbar } from './Toolbar'
 import { formatNounName } from '../utils'
+
+// ---------------------------------------------------------------------------
+// GridCellRenderer — maps ILayerGridCell to CSS Grid
+// ---------------------------------------------------------------------------
+
+const STYLE_CLASSES: Record<string, string> = {
+  primary: 'text-sm font-medium text-card-foreground truncate',
+  secondary: 'text-xs text-muted-foreground',
+  muted: 'text-xs text-muted-foreground',
+  date: 'text-xs text-muted-foreground whitespace-nowrap',
+  status: 'text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-muted text-muted-foreground border-border',
+  label: 'text-sm text-card-foreground',
+}
+
+const ALIGNMENT_MAP: Record<string, string> = {
+  start: 'justify-self-start',
+  center: 'justify-self-center',
+  end: 'justify-self-end',
+  stretch: 'justify-self-stretch',
+}
+
+function GridCellRenderer({ grid, status }: { grid: ILayerGridCell; status?: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3 w-full">
+      <div
+        className="flex-1 min-w-0 gap-x-3 gap-y-0.5"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${grid.columns}, minmax(0, auto))`,
+          gridTemplateRows: `repeat(${grid.rows}, auto)`,
+        }}
+      >
+        {grid.elements.map((el, i) => {
+          const value = (el as any).value ?? ''
+          if (!value) return null
+          const styleClass = STYLE_CLASSES[el.style || 'label'] || STYLE_CLASSES.label
+          const alignClass = ALIGNMENT_MAP[el.horizontalAlignment || 'start'] || ''
+          return (
+            <span
+              key={el.field + i}
+              className={`${styleClass} ${alignClass}`}
+              style={{
+                gridColumn: el.columnSpan ? `${el.column + 1} / span ${el.columnSpan}` : el.column + 1,
+                gridRow: el.rowSpan ? `${el.row + 1} / span ${el.rowSpan}` : el.row + 1,
+              }}
+            >
+              {value}
+            </span>
+          )
+        })}
+      </div>
+      {status ? (
+        <span className={STYLE_CLASSES.status}>{status}</span>
+      ) : (
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground flex-shrink-0"><path d="m9 18 6-6-6-6"/></svg>
+      )}
+    </div>
+  )
+}
 
 /** Returns true if the string is a template variable like {fieldId} */
 function isTemplateText(s: string): boolean {
@@ -81,24 +140,31 @@ export function NavigationLayer({ layer, registry: _registry, onAction, onNaviga
                   ? 'bg-primary-600/10 border-primary-500 ring-1 ring-primary-500 dark:bg-primary-400/10 dark:border-primary-400 dark:ring-primary-400'
                   : 'bg-card border-border hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-sm'
               }`}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  {item.imagePath && (
-                    <img src={item.imagePath} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-card-foreground truncate">{item.text}</div>
-                    {item.subtext && !isTemplateText(item.subtext) && <div className="text-xs text-muted-foreground mt-0.5">{item.subtext}</div>}
+              {item.grid ? (
+                <GridCellRenderer grid={item.grid} status={item.status} />
+              ) : (
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    {item.imagePath && (
+                      <img src={item.imagePath} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-sm font-medium text-card-foreground truncate">{item.text}</span>
+                        {item.date && <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">{item.date}</span>}
+                      </div>
+                      {item.subtext && !isTemplateText(item.subtext) && <div className="text-xs text-muted-foreground mt-0.5">{item.subtext}</div>}
+                    </div>
                   </div>
+                  {item.status ? (
+                    <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-muted text-muted-foreground border-border">
+                      {item.status}
+                    </span>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground flex-shrink-0"><path d="m9 18 6-6-6-6"/></svg>
+                  )}
                 </div>
-                {item.status ? (
-                  <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-muted text-muted-foreground border-border">
-                    {item.status}
-                  </span>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground flex-shrink-0"><path d="m9 18 6-6-6-6"/></svg>
-                )}
-              </div>
+              )}
             </button>
             )
           })}
