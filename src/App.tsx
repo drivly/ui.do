@@ -563,20 +563,27 @@ function AppContent() {
             {view.type === 'uod' && selectedApp && (
               <UoDView domains={appDomains} onSelectDomain={handleSelectDomain} />
             )}
-            {view.type === 'dashboard' && !selectedDomainId && selectedApp && (appDomains.length > 1 || selectedApp.chatEndpoint) && (
-              selectedApp.chatEndpoint
-                ? <ChatOverboardView appName={formatAppLabel(selectedApp)} appSlug={selectedApp.slug} endpoint={selectedApp.chatEndpoint} />
-                : <OverboardView
-                    domains={appDomains}
-                    appName={formatAppLabel(selectedApp)}
-                    onSelectDomain={handleSelectDomain}
-                    onNavigate={setView}
-                  />
+            {view.type === 'dashboard' && selectedApp?.chatEndpoint && (
+              <ChatOverboardView
+                appName={formatAppLabel(selectedApp)}
+                appSlug={selectedApp.slug}
+                endpoint={selectedApp.chatEndpoint}
+                requestId={selectedRequestId}
+                domainId={selectedDomain?.id}
+                onSelectRequest={setSelectedRequestId}
+                onStateChange={() => setListRefreshKey(k => k + 1)}
+              />
             )}
-            {view.type === 'dashboard' && selectedDomain && (
-              selectedApp?.chatEndpoint
-                ? <ChatOverboardView appName={formatAppLabel(selectedApp)} appSlug={selectedApp.slug} endpoint={selectedApp.chatEndpoint} requestId={selectedRequestId} domainId={selectedDomain.id} onSelectRequest={setSelectedRequestId} onStateChange={() => setListRefreshKey(k => k + 1)} />
-                : <DashboardView domain={selectedDomain} nouns={nouns} isAdmin={isAdmin} onNavigate={setView} />
+            {view.type === 'dashboard' && !selectedApp?.chatEndpoint && !selectedDomainId && selectedApp && appDomains.length > 1 && (
+              <OverboardView
+                domains={appDomains}
+                appName={formatAppLabel(selectedApp)}
+                onSelectDomain={handleSelectDomain}
+                onNavigate={setView}
+              />
+            )}
+            {view.type === 'dashboard' && !selectedApp?.chatEndpoint && selectedDomain && (
+              <DashboardView domain={selectedDomain} nouns={nouns} isAdmin={isAdmin} onNavigate={setView} />
             )}
             {view.type === 'schema' && selectedDomain && !selectedApp?.chatEndpoint && (
               <SchemaView domain={selectedDomain} />
