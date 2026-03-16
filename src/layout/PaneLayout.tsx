@@ -4,7 +4,7 @@ import type { LayoutState } from './types'
 interface PaneLayoutProps {
   layout: LayoutState
   hideMaster?: boolean
-  renderMaster: () => ReactNode
+  master: ReactNode
   renderDetail: () => ReactNode
   renderPopover?: () => ReactNode
   onClosePopover: () => void
@@ -13,7 +13,7 @@ interface PaneLayoutProps {
 export function PaneLayout({
   layout,
   hideMaster,
-  renderMaster,
+  master,
   renderDetail,
   renderPopover,
   onClosePopover,
@@ -28,7 +28,7 @@ export function PaneLayout({
         ${hideMaster ? 'hidden' : hasDetail ? 'hidden md:flex' : 'flex'}
         flex-col w-full md:w-80 lg:w-96 border-r border-border shrink-0 overflow-hidden
       `}>
-        {renderMaster()}
+        {master}
       </div>
 
       {/* Detail pane */}

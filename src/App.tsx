@@ -270,6 +270,11 @@ function AppContent() {
     selectedDomainId ? appDomains.find(d => d.id === selectedDomainId) || appDomains[0] : (appDomains.length === 1 ? appDomains[0] : null),
     [selectedDomainId, appDomains]
   )
+  // Remember last domain so chat master pane stays mounted across overboard navigation
+  const lastDomainRef = useRef<Domain | null>(null)
+  if (selectedDomain) lastDomainRef.current = selectedDomain
+  const masterDomain = selectedDomain || lastDomainRef.current
+
   const { nouns } = useNouns(selectedDomain?.id)
 
   // When apps refresh and we have a pending slug, select the new app
@@ -504,47 +509,44 @@ function AppContent() {
           detail: { ...layout.detail, current: (selectedDomain || (!selectedDomainId && selectedApp && (appDomains.length > 1 || selectedApp.chatEndpoint))) ? view.type : null },
         }}
         hideMaster={!selectedDomain}
-        renderMaster={() => (
-          <>
-            {/* Chat apps: show SupportRequest entity list from iLayer readings */}
-            {selectedDomain && selectedApp?.chatEndpoint && (
-              <div className="flex flex-col h-full overflow-hidden" key="entity-list-stable">
-                <EntityListView domain={selectedDomain} entityName="SupportRequest" listOnly onSelect={setSelectedRequestId} selectedId={selectedRequestId} refreshKey={listRefreshKey} />
-              </div>
-            )}
-            {/* Non-chat apps: show noun navigation sidebar */}
-            {selectedDomain && !selectedApp?.chatEndpoint && view.type !== 'build' && view.type !== 'uod' && (
-              <nav className="p-3 space-y-0.5 overflow-y-auto flex-1">
-                <button
-                  onClick={() => setView({ type: 'dashboard' })}
+        master={
+          selectedApp?.chatEndpoint ? (
+            <div className="flex flex-col h-full overflow-hidden">
+              {masterDomain && (
+                <EntityListView domain={masterDomain} entityName="SupportRequest" listOnly onSelect={setSelectedRequestId} selectedId={selectedRequestId} refreshKey={listRefreshKey} />
+              )}
+            </div>
+          ) : selectedDomain && view.type !== 'build' && view.type !== 'uod' ? (
+            <nav className="p-3 space-y-0.5 overflow-y-auto flex-1">
+              <button
+                onClick={() => setView({ type: 'dashboard' })}
+                className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
+                  view.type === 'dashboard' ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400 font-medium' : 'text-foreground hover:bg-muted'
+                }`}>
+                Dashboard
+              </button>
+              <button
+                onClick={() => setView({ type: 'schema' })}
+                className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
+                  view.type === 'schema' ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400 font-medium' : 'text-foreground hover:bg-muted'
+                }`}>
+                Schema
+              </button>
+              <div className="border-t border-border my-2" />
+              {nouns.map(n => (
+                <button key={n.id}
+                  onClick={() => setView({ type: 'entity', noun: n.name })}
                   className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
-                    view.type === 'dashboard' ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400 font-medium' : 'text-foreground hover:bg-muted'
+                    view.type === 'entity' && (view as any).noun === n.name
+                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400 font-medium'
+                      : 'text-foreground hover:bg-muted'
                   }`}>
-                  Dashboard
+                  {nounDisplayName(n)}
                 </button>
-                <button
-                  onClick={() => setView({ type: 'schema' })}
-                  className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
-                    view.type === 'schema' ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400 font-medium' : 'text-foreground hover:bg-muted'
-                  }`}>
-                  Schema
-                </button>
-                <div className="border-t border-border my-2" />
-                {nouns.map(n => (
-                  <button key={n.id}
-                    onClick={() => setView({ type: 'entity', noun: n.name })}
-                    className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
-                      view.type === 'entity' && (view as any).noun === n.name
-                        ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400 font-medium'
-                        : 'text-foreground hover:bg-muted'
-                    }`}>
-                    {nounDisplayName(n)}
-                  </button>
-                ))}
-              </nav>
-            )}
-          </>
-        )}
+              ))}
+            </nav>
+          ) : null
+        }
         renderDetail={() => (
           <main className={`flex-1 overflow-y-auto ${view.type === 'dashboard' && selectedApp?.chatEndpoint ? '' : 'p-6'}`}>
             {!session && !appsLoading && apps.length === 0 && view.type !== 'build' && (
