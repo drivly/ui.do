@@ -3,7 +3,7 @@ import { fetchLayers, fetchEntityInstances, sendStateEvent, fetchEntityState, ty
 import { useLiveEvents } from '../hooks/useLiveEvents'
 import { formatNounName, parseStateAddress, formatDate } from '../utils'
 import { LayerRenderer } from '../components/LayerRenderer'
-import type { ILayer, INavigationLayer, IActionButton } from '../types'
+import type { ILayer, ILayerElement, INavigationLayer, IActionButton } from '../types'
 
 // Tables that trigger a refresh when changed — includes both legacy collections and 3NF entity tables
 const INSTANCE_TABLES = new Set([
@@ -245,7 +245,7 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
   const [layers, setLayers] = useState<Record<string, ILayer> | null>(null)
   const [navStack, setNavStack] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [_loading, setLoading] = useState(true)
   const [instances, setInstances] = useState<{ resources: any[]; statuses: Map<string, string> } | null>(null)
   const CLOSED_STATUSES = ['Resolved', 'Closed']
   const statusStorageKey = `statusFilter:${domain.id}:${entityName}`
@@ -360,9 +360,18 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
             ? resources.filter(r => statuses.get(r.id) === statusFilter)
             : resources
 
-      // Display field mapping from iLayer — derived from domain readings by the generator
+      // Sort: by date field (descending) if temporal field exists, otherwise by primary field or id
       const { primary: primaryField, secondary: secondaryField, date: dateField } =
         (navLayer as any).displayFields || {} as { primary?: string; secondary?: string; date?: string }
+
+      filtered.sort((a, b) => {
+        const aDate = dateField ? a[dateField] : a.createdAt
+        const bDate = dateField ? b[dateField] : b.createdAt
+        if (aDate && bDate) return bDate > aDate ? 1 : bDate < aDate ? -1 : 0
+        const aName = (primaryField && a[primaryField]) || a.reference || a.id
+        const bName = (primaryField && b[primaryField]) || b.reference || b.id
+        return String(aName).localeCompare(String(bName))
+      })
       const gridCellTemplate = (navLayer as any).gridCell as
         { rows: number; columns: number; elements: Array<{ field: string; row: number; column: number; columnSpan?: number; horizontalAlignment?: string; style?: string; format?: string }> } | undefined // alignment types are cast at render time
 
@@ -384,7 +393,7 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
                 value: el.format === 'date' && r[el.field]
                   ? formatDate(r[el.field])
                   : r[el.field] || '',
-              })),
+              } as ILayerElement)),
               address: `/${key}/${r.id}`,
               metadata: { id: r.id, status: statuses.get(r.id) || '' },
             } : undefined

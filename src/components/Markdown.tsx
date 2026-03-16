@@ -1,9 +1,10 @@
 import ReactMarkdown from 'react-markdown'
 
 export function Markdown({ children }: { children: string }) {
+  // Convert single newlines to double so markdown renders them as paragraph breaks
+  const normalized = children.replace(/(?<!\n)\n(?!\n)/g, '\n\n')
   return (
     <ReactMarkdown
-      breaks
       components={{
         p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
         strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
@@ -31,7 +32,7 @@ export function Markdown({ children }: { children: string }) {
         ),
       }}
     >
-      {children}
+      {normalized}
     </ReactMarkdown>
   )
 }
