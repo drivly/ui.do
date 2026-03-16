@@ -29,7 +29,7 @@ export function ChatControl({ field }: { field: ILayerField }) {
           <div key={i} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
             <div className="max-w-[85%] sm:max-w-[75%]">
               <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${ROLE_STYLES[msg.role] || ROLE_STYLES.agent}`}>
-                {isUser ? msg.content : <Markdown>{msg.content}</Markdown>}
+                {isUser ? <span className="whitespace-pre-wrap">{msg.content}</span> : <Markdown>{msg.content}</Markdown>}
               </div>
               {msg.escalationReason && (
                 <div className="text-[10px] text-amber-500 mt-1 italic">

@@ -176,7 +176,7 @@ export const ChatStreamControl = forwardRef<ChatStreamHandle, {
                 ? 'bg-primary-600 text-white rounded-br-md'
                 : 'bg-card border border-border rounded-bl-md'
             }`}>
-              {msg.role === 'user' ? msg.content : <Markdown>{msg.content}</Markdown>}
+              {msg.role === 'user' ? <span className="whitespace-pre-wrap">{msg.content}</span> : <Markdown>{msg.content}</Markdown>}
             </div>
           </div>
         ))}

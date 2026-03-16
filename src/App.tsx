@@ -513,7 +513,7 @@ function AppContent() {
           selectedApp?.chatEndpoint ? (
             <div className="flex flex-col h-full overflow-hidden">
               {masterDomain && (
-                <EntityListView domain={masterDomain} entityName="SupportRequest" listOnly onSelect={setSelectedRequestId} selectedId={selectedRequestId} refreshKey={listRefreshKey} />
+                <EntityListView domain={masterDomain} entityName="SupportRequest" listOnly onSelect={(id) => setSelectedRequestId(id === selectedRequestId ? null : id)} selectedId={selectedRequestId} refreshKey={listRefreshKey} />
               )}
             </div>
           ) : selectedDomain && view.type !== 'build' && view.type !== 'uod' ? (

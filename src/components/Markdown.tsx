@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 export function Markdown({ children }: { children: string }) {
   return (
     <ReactMarkdown
+      breaks
       components={{
         p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
         strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
