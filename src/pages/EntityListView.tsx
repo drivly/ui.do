@@ -425,6 +425,8 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
   const displayName = formatNounName(entityName)
 
   if (!hydratedLayers || !currentLayer || !hydratedLayers[currentLayer]) {
+    // Still loading — render empty container to prevent flash of error message
+    if (loading || !layers) return <div className={listOnly ? 'p-4' : 'max-w-2xl mx-auto'} />
     return (
       <div className={listOnly ? 'p-4' : 'max-w-2xl mx-auto'}>
         <h1 className="text-xl font-bold text-foreground font-display mb-4">{displayName}</h1>
