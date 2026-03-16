@@ -270,7 +270,7 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
   const refreshInstances = useCallback(() => {
     return fetchEntityInstances(domain.id, entityName).then(inst => {
       // Build a fingerprint: resource ids + statuses
-      const fp = inst.resources.map(r => `${r.id}:${r.reference}:${r.value}:${inst.statuses.get(r.id) || ''}`).join('|')
+      const fp = inst.resources.map(r => `${r.id}:${r.reference}:${r.value}:${r.date || r.createdAt || ''}:${inst.statuses.get(r.id) || ''}`).join('|')
       if (fp !== instanceFingerprintRef.current) {
         instanceFingerprintRef.current = fp
         setInstances(inst)
