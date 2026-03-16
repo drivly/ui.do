@@ -288,38 +288,18 @@ export async function updateDashboardFact(id: string, value: string): Promise<Re
   return data.doc
 }
 
-/** Fetch entity instances from 3NF tables, with state machine statuses */
+/** Fetch entity instances from 3NF tables — status is normalized onto each entity */
 export async function fetchEntityInstances(domainId: string, nounName: string): Promise<{
-  resources: Array<{ id: string; reference?: string; value?: string; createdAt?: string; [key: string]: any }>
+  resources: Array<{ id: string; status?: string; reference?: string; value?: string; createdAt?: string; [key: string]: any }>
   statuses: Map<string, string>
 }> {
-  // Query 3NF table and state machines in parallel
-  const smParams = new URLSearchParams()
-  smParams.set('where[domain][equals]', domainId)
-  smParams.set('depth', '1')
-  smParams.set('pagination', 'false')
-
-  const [entityRes, smResponse] = await Promise.all([
-    apiFetch(`/graphdl/entities/${nounName}?domain=${domainId}&sort=-createdAt&limit=1000`),
-    apiFetch(`/graphdl/raw/state-machines?${smParams}`),
-  ])
-
+  const entityRes = await apiFetch(`/graphdl/entities/${nounName}?domain=${domainId}&sort=-createdAt&limit=1000`)
   const resources = entityRes.ok ? (await entityRes.json()).docs || [] : []
 
+  // Build status map from normalized status field on each entity
   const statuses = new Map<string, string>()
-  if (smResponse.ok) {
-    const smData = await smResponse.json()
-    for (const sm of smData.docs || []) {
-      // State machines link to entities by name (resource ID) or resource FK
-      const resourceId = typeof sm.resource === 'string' ? sm.resource : sm.resource?.id
-      const name = sm.name // state machine name = entity ID
-      const statusName = typeof sm.stateMachineStatus === 'object' ? sm.stateMachineStatus?.name
-        : typeof sm.currentStatus === 'object' ? sm.currentStatus?.name : ''
-      if (statusName) {
-        if (resourceId) statuses.set(resourceId, statusName)
-        if (name && name !== resourceId) statuses.set(name, statusName)
-      }
-    }
+  for (const r of resources) {
+    if (r.status) statuses.set(r.id, r.status)
   }
 
   return { resources, statuses }
