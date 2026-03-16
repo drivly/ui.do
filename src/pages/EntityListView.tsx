@@ -106,13 +106,27 @@ const EVENT_STYLES: Record<string, string> = {
   reject: 'bg-red-600 hover:bg-red-700 text-white',
 }
 
-function EntityStateBar({ entityName, entityId, onStateChange }: {
+/** External action links derived from entity data */
+const EXTERNAL_ACTIONS: Array<{
+  field: string
+  label: string
+  urlTemplate: string
+  icon: string
+}> = [
+  { field: 'stripeCustomerId', label: 'Customer', urlTemplate: 'https://dashboard.stripe.com/customers/{value}', icon: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2' },
+  { field: 'stripeSubscriptionId', label: 'Subscription', urlTemplate: 'https://dashboard.stripe.com/subscriptions/{value}', icon: 'M21 12V7H5a2 2 0 0 1 0-4h14v4' },
+]
+
+function EntityStateBar({ entityName, entityId, entityData, onStateChange }: {
   entityName: string
   entityId: string
+  entityData?: Record<string, any> | null
   onStateChange?: () => void
 }) {
   const [state, setState] = useState<EntityState | null>(null)
   const [acting, setActing] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const loadState = useCallback(async () => {
     const s = await fetchEntityState(entityName, entityId)
@@ -123,6 +137,16 @@ function EntityStateBar({ entityName, entityId, onStateChange }: {
     setState(null)
     loadState()
   }, [loadState])
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!menuOpen) return
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [menuOpen])
 
   const handleEvent = useCallback(async (event: string) => {
     setActing(true)
@@ -142,8 +166,12 @@ function EntityStateBar({ entityName, entityId, onStateChange }: {
   const events = transitions.length > 0
     ? transitions.map(t => t.event)
     : (state.availableEvents || [])
-  // Deduplicate events
   const uniqueEvents = [...new Set(events)]
+
+  // Build external actions from entity data
+  const externalActions = EXTERNAL_ACTIONS
+    .filter(a => entityData?.[a.field])
+    .map(a => ({ ...a, url: a.urlTemplate.replace('{value}', entityData![a.field]) }))
 
   return (
     <div className="flex items-center gap-2 mb-4 px-1">
@@ -164,6 +192,35 @@ function EntityStateBar({ entityName, entityId, onStateChange }: {
           </button>
         )
       })}
+      {/* Actions menu (external links + more) */}
+      {externalActions.length > 0 && (
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="text-xs p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg z-50 py-1 min-w-[160px]">
+              {externalActions.map(action => (
+                <a
+                  key={action.field}
+                  href={action.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={action.icon}/></svg>
+                  {action.label}
+                  <svg className="ml-auto" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -536,6 +593,7 @@ export function EntityListView({ domain, entityName, listOnly, onSelect, selecte
         <EntityStateBar
           entityName={entityName}
           entityId={detailEntityId!}
+          entityData={instances?.resources.find(r => r.id === detailEntityId)}
           onStateChange={() => refreshData(false).catch(e => setError(e.message))}
         />
       )}

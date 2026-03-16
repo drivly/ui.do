@@ -27,38 +27,41 @@ const ALIGNMENT_MAP: Record<string, string> = {
 
 function GridCellRenderer({ grid, status }: { grid: ILayerGridCell; status?: string }) {
   return (
-    <div className="flex items-start justify-between gap-3 w-full">
-      <div
-        className="flex-1 min-w-0 gap-x-3 gap-y-0.5"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(${grid.columns}, minmax(0, auto))`,
-          gridTemplateRows: `repeat(${grid.rows}, auto)`,
-        }}
-      >
-        {grid.elements.map((el, i) => {
-          const value = (el as any).value ?? ''
-          if (!value) return null
-          const styleClass = STYLE_CLASSES[el.style || 'label'] || STYLE_CLASSES.label
-          const alignClass = ALIGNMENT_MAP[el.horizontalAlignment || 'start'] || ''
-          return (
-            <span
-              key={el.field + i}
-              className={`${styleClass} ${alignClass}`}
-              style={{
-                gridColumn: el.columnSpan ? `${el.column + 1} / span ${el.columnSpan}` : el.column + 1,
-                gridRow: el.rowSpan ? `${el.row + 1} / span ${el.rowSpan}` : el.row + 1,
-              }}
-            >
-              {value}
-            </span>
-          )
-        })}
+    <div className="w-full">
+      <div className="flex items-start justify-between gap-3">
+        <div
+          className="flex-1 min-w-0 gap-x-3 gap-y-0.5"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${grid.columns}, minmax(0, auto))`,
+            gridTemplateRows: `repeat(${grid.rows}, auto)`,
+          }}
+        >
+          {grid.elements.map((el, i) => {
+            const value = (el as any).value ?? ''
+            if (!value) return null
+            const styleClass = STYLE_CLASSES[el.style || 'label'] || STYLE_CLASSES.label
+            const alignClass = ALIGNMENT_MAP[el.horizontalAlignment || 'start'] || ''
+            return (
+              <span
+                key={el.field + i}
+                className={`${styleClass} ${alignClass}`}
+                style={{
+                  gridColumn: el.columnSpan ? `${el.column + 1} / span ${el.columnSpan}` : el.column + 1,
+                  gridRow: el.rowSpan ? `${el.row + 1} / span ${el.rowSpan}` : el.row + 1,
+                }}
+              >
+                {value}
+              </span>
+            )
+          })}
+        </div>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground flex-shrink-0 mt-0.5"><path d="m9 18 6-6-6-6"/></svg>
       </div>
-      {status ? (
-        <span className={STYLE_CLASSES.status}>{status}</span>
-      ) : (
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground flex-shrink-0"><path d="m9 18 6-6-6-6"/></svg>
+      {status && (
+        <div className="flex justify-end mt-1">
+          <span className={STYLE_CLASSES.status}>{status}</span>
+        </div>
       )}
     </div>
   )
@@ -143,25 +146,28 @@ export function NavigationLayer({ layer, registry: _registry, onAction, onNaviga
               {item.grid ? (
                 <GridCellRenderer grid={item.grid} status={item.status} />
               ) : (
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    {item.imagePath && (
-                      <img src={item.imagePath} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="text-sm font-medium text-card-foreground truncate">{item.text}</span>
-                        {item.date && <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">{item.date}</span>}
+                <div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      {item.imagePath && (
+                        <img src={item.imagePath} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-sm font-medium text-card-foreground truncate">{item.text}</span>
+                          {item.date && <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">{item.date}</span>}
+                        </div>
+                        {item.subtext && !isTemplateText(item.subtext) && <div className="text-xs text-muted-foreground mt-0.5">{item.subtext}</div>}
                       </div>
-                      {item.subtext && !isTemplateText(item.subtext) && <div className="text-xs text-muted-foreground mt-0.5">{item.subtext}</div>}
                     </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground flex-shrink-0 mt-0.5"><path d="m9 18 6-6-6-6"/></svg>
                   </div>
-                  {item.status ? (
-                    <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-muted text-muted-foreground border-border">
-                      {item.status}
-                    </span>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground flex-shrink-0"><path d="m9 18 6-6-6-6"/></svg>
+                  {item.status && (
+                    <div className="flex justify-end mt-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-muted text-muted-foreground border-border">
+                        {item.status}
+                      </span>
+                    </div>
                   )}
                 </div>
               )}
@@ -170,6 +176,9 @@ export function NavigationLayer({ layer, registry: _registry, onAction, onNaviga
           })}
           {list.footer && (
             <p className="text-xs text-muted-foreground px-1">{list.footer}</p>
+          )}
+          {!list.footer && list.items.length > 0 && (
+            <p className="text-xs text-muted-foreground px-1 text-center pt-1">{list.items.length} {list.items.length === 1 ? 'item' : 'items'}</p>
           )}
         </div>
       ))}
