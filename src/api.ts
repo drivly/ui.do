@@ -141,6 +141,7 @@ export async function fetchReadings(domainId: string): Promise<Reading[]> {
 export interface Constraint {
   id: string
   title?: string
+  text?: string
   kind: string
   modality: 'Alethic' | 'Deontic'
 }

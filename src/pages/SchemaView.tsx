@@ -183,7 +183,7 @@ export function SchemaView({ domain }: Props) {
                 <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${
                   c.modality === 'Deontic' ? 'bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-400' : 'bg-secondary-100 text-secondary-700 dark:bg-secondary-950 dark:text-secondary-400'
                 }`}>{c.kind}</span>
-                <span className="text-muted-foreground">{c.title || c.kind}</span>
+                <span className="text-muted-foreground">{c.text || c.title || c.kind}</span>
               </li>
             ))}
           </ul>
