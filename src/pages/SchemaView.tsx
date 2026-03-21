@@ -37,9 +37,8 @@ export function SchemaView({ domain }: Props) {
 
   if (loading) return <div className="text-muted-foreground">Loading schema...</div>
 
-  // Build noun lookup by ID and name
+  // Build noun lookup by ID
   const nounById = new Map(nouns.map(n => [n.id, n]))
-  const nounNames = new Set(nouns.map(n => n.name))
 
   // Determine which subtypes have exclusive readings (their own properties/table)
   // A subtype gets its own table if any reading mentions it without mentioning its supertype
