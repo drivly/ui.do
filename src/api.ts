@@ -104,6 +104,7 @@ export interface Noun {
   name: string
   objectType: 'entity' | 'value'
   plural?: string
+  superType?: string | { id: string; name?: string }
   domain?: string | { id: string; slug?: string }
 }
 
@@ -111,7 +112,7 @@ export async function fetchNouns(domainId: string): Promise<Noun[]> {
   const params = new URLSearchParams()
   params.set('where[domain][equals]', domainId)
   params.set('where[objectType][equals]', 'entity')
-  params.set('depth', '0')
+  params.set('depth', '1')
   params.set('pagination', 'false')
   const res = await apiFetch(`/graphdl/raw/nouns?${params}`)
   if (!res.ok) throw new Error('Failed to fetch nouns')
