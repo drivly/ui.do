@@ -79,17 +79,7 @@ export async function fetchApps(): Promise<AppRecord[]> {
   const data = await res.json()
   const docs = data.docs || data
   if (!Array.isArray(docs)) return []
-  return docs.map((app: any) => {
-    // Chat config comes from the app record (appType, chatEndpoint)
-    if (app.appType === 'chat' && !app.navigableDomains) {
-      // For chat apps, default to showing only the support domain
-      const supportDomain = (app.domains || []).find((d: any) =>
-        typeof d === 'object' && d.domainSlug?.endsWith('-support')
-      )
-      if (supportDomain) app.navigableDomains = [supportDomain.id]
-    }
-    return app
-  })
+  return docs
 }
 
 export interface Domain {
