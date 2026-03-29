@@ -1,4 +1,8 @@
-const API_URL = new URLSearchParams(window.location.search).get('api') || 'https://api.auto.dev'
+function getApiUrl() {
+  if (typeof window === 'undefined') return 'https://api.auto.dev'
+  return new URLSearchParams(window.location.search).get('api') || 'https://api.auto.dev'
+}
+const API_URL = getApiUrl()
 const AUTH_URL = 'https://auto.dev/signin'
 
 export function redirectToLogin() {
@@ -55,10 +59,11 @@ export interface Organization {
 }
 
 export async function fetchOrganizations(): Promise<Organization[]> {
-  const res = await apiFetch('/graphdl/raw/organizations?depth=0&pagination=false')
+  const res = await apiFetch('/api/entities/Organization?domain=organizations&limit=100')
   if (!res.ok) return []
   const data = await res.json()
-  return data.docs || []
+  const docs = data.docs || []
+  return docs.map((d: any) => ({ id: d.id, name: d.name || d.id, slug: d.orgSlug || d.id }))
 }
 
 export interface AppRecord {
@@ -74,12 +79,20 @@ export interface AppRecord {
 }
 
 export async function fetchApps(): Promise<AppRecord[]> {
-  const res = await apiFetch('/graphdl/raw/apps?depth=1&pagination=false')
+  const res = await apiFetch('/api/entities/App?domain=organizations&limit=100')
   if (!res.ok) throw new Error('Failed to fetch apps')
   const data = await res.json()
-  const docs = data.docs || data
-  if (!Array.isArray(docs)) return []
-  return docs
+  const docs = data.docs || []
+  return docs.map((d: any) => ({
+    id: d.id,
+    name: d.name || d.id,
+    slug: d.appSlug || d.id,
+    organization: d.organization,
+    domains: d.navigableDomain ? (Array.isArray(d.navigableDomain) ? d.navigableDomain : [d.navigableDomain]) : [],
+    chatEndpoint: d.chatEndpoint,
+    appType: d.appType,
+    navigableDomains: d.navigableDomains,
+  }))
 }
 
 export interface Domain {
@@ -92,11 +105,17 @@ export interface Domain {
 }
 
 export async function fetchDomains(): Promise<Domain[]> {
-  const res = await apiFetch('/graphdl/raw/domains?depth=0&pagination=false')
-  if (!res.ok) throw new Error('Failed to fetch domains')
+  const res = await apiFetch('/api/entities/Domain?domain=organizations&limit=500')
+  if (!res.ok) return []
   const data = await res.json()
-  const docs = data.docs || data
-  return Array.isArray(docs) ? docs : []
+  const docs = data.docs || []
+  return docs.map((d: any) => ({
+    id: d.id,
+    slug: d.domainSlug || d.id,
+    domainSlug: d.domainSlug || d.id,
+    name: d.name || d.id,
+    organization: d.organization,
+  }))
 }
 
 export interface Noun {
@@ -109,15 +128,17 @@ export interface Noun {
 }
 
 export async function fetchNouns(domainId: string): Promise<Noun[]> {
-  const params = new URLSearchParams()
-  params.set('where[domain][equals]', domainId)
-  params.set('where[objectType][equals]', 'entity')
-  params.set('depth', '1')
-  params.set('pagination', 'false')
-  const res = await apiFetch(`/graphdl/raw/nouns?${params}`)
-  if (!res.ok) throw new Error('Failed to fetch nouns')
+  const res = await apiFetch(`/api/entities/Noun?domain=${domainId}&limit=500`)
+  if (!res.ok) return []
   const data = await res.json()
-  return data.docs || []
+  const docs = (data.docs || []).filter((d: any) => d.objectType === 'entity')
+  return docs.map((d: any) => ({
+    id: d.id,
+    name: d.name || d.id,
+    objectType: d.objectType || 'entity',
+    plural: d.plural,
+    domain: domainId,
+  }))
 }
 
 export interface Reading {

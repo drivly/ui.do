@@ -6,6 +6,7 @@ import { useNouns } from './hooks/useNouns'
 import { redirectToLogin, deleteApp, type AppRecord, type Domain, type Organization } from './api'
 import { DashboardView } from './pages/DashboardView'
 import { EntityListView } from './pages/EntityListView'
+import { ArestView } from './pages/ArestView'
 import { SchemaView } from './pages/SchemaView'
 import { UoDView } from './pages/UoDView'
 import { BuildView } from './pages/BuildView'
@@ -141,7 +142,7 @@ function AppContent() {
 
   const { layout, closePopover } = usePaneNavigation()
 
-  // On custom domains (e.g. chat.auto.dev), hide app picker, delete, workspace
+  // On custom domains (e.g. support.auto.dev), hide app picker, delete, workspace
   const isCustomDomain = !['ui.auto.dev', 'localhost'].some(h => window.location.hostname.includes(h))
 
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null)
@@ -589,7 +590,17 @@ function AppContent() {
               <SchemaView domain={selectedDomain} />
             )}
             {view.type === 'entity' && selectedDomain && !selectedApp?.chatEndpoint && (
-              <EntityListView domain={selectedDomain} entityName={(view as any).noun} />
+              <ArestView
+                noun={(view as any).noun}
+                domain={typeof selectedDomain === 'string' ? selectedDomain : (selectedDomain as any).slug || (selectedDomain as any).domainSlug || (selectedDomain as any).id}
+                onNavigate={(noun, id) => {
+                  if (id) {
+                    // Navigate to specific entity — ArestView handles it internally
+                  } else {
+                    setView({ type: 'entity', noun })
+                  }
+                }}
+              />
             )}
           </main>
         )}
