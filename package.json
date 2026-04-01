@@ -11,6 +11,11 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@mdxui/admin": "file:../ui/packages/admin",
+    "@mdxui/app": "file:../ui/packages/app",
+    "@mdxui/primitives": "file:../ui/packages/primitives",
+    "@mdxui/themes": "file:../ui/packages/themes",
+    "@mdxui/widgets": "file:../ui/packages/widgets",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",

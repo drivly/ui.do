@@ -1,5 +1,0 @@
-export { parseDashboardConfig, serializeSection, serializeWidget, serializeTarget } from './parser.ts'
-export type { DashboardConfig, DashboardSection, DashboardWidget, WidgetType } from './types.ts'
-export { WidgetRenderer } from './WidgetRenderer.tsx'
-export { SectionRenderer } from './SectionRenderer.tsx'
-export { WidgetPicker } from './WidgetPicker.tsx'
