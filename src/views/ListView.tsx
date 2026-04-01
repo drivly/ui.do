@@ -7,7 +7,7 @@ interface ListViewProps {
   onFollowLink: (href: string) => void
 }
 
-export default function ListView({ resource, store, onSelect, onFollowLink }: ListViewProps) {
+export default function ListView({ resource, onSelect, onFollowLink }: ListViewProps) {
   const docs = resource.docs || []
   const schema = resource._schema
   const links = resource._links || {}

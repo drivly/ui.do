@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react'
-import type { Store, Resource } from '../rho/store'
+import type { Store } from '../rho/store'
 
 interface ShellProps {
   store: Store

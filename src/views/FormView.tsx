@@ -7,7 +7,7 @@ interface FormViewProps {
   onFollowLink: (href: string) => void
 }
 
-export default function FormView({ resource, store, onFollowLink }: FormViewProps) {
+export default function FormView({ resource, store }: FormViewProps) {
   const schema = resource._schema
   const fields = schema?.fields || []
   const createLink = resource._links?.create
